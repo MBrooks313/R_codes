@@ -9,7 +9,10 @@ GOANA <- function(gene.list, univ, species){
   ####USAGE####
   # gene.list = list (or list-of-list) of ENTREZ gene IDS.
   # univ = list of ENTREZ gene IDs for 
-  # species = 'hsa', 'mmu', or 'rno'
+  # species = 'Hs', 'Mm', or 'Rn'
+  #
+  # Example:
+  # GOANA(gene.list = cl.list, univ=univ, species = "Hs")
   #############
   
   require(limma)
