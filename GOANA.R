@@ -13,6 +13,8 @@ GOANA <- function(gene.list, univ, species){
   #
   # Example:
   # GOANA(gene.list = cl.list, univ=univ, species = "Hs")
+  #
+  # Output is a csv file for each item in gene.list ending in "_GOANA.csv"
   #############
   
   require(limma)
