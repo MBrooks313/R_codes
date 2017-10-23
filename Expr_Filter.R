@@ -29,11 +29,11 @@ ExpFilt <- function(data, group, exp=1){
      		idx.tmp <- row.names(mtx[rowSums(mtx[,grep(lvl[i], group)] >= exp) == length(grep(lvl[i], group)),])
    	} 
    	idx <- c(idx,idx.tmp)
-    }
+   }
   	
    #Get unique list of indexes
    idx <- unique(unlist(idx))
   	
    #Return varaible containing the list of indexes passing the filtering
    assign("idx.filt", idx ,envir=.GlobalEnv)
-  }
+}
