@@ -1,16 +1,16 @@
 ExpFilt <- function(data, group, exp=1){
-	##This program expression filtering on a wide format data.frame. It requires all memners of a group to be greater than or equal to the expression value given.
+  ##This program expression filtering on a wide format data.frame. It requires all members of a group to be greater than or equal to the expression value given.
   ##Written by Matthew Brooks, last modified March 23rd, 2017
 	
   ####USAGE###
-	# data: data.frame of expression values
-	# group: list of groupings for samples in data
-	# exp: expression level to require all samples in a group to be equal to or greater
+  # data: data.frame of expression values
+  # group: list of groupings for samples in data
+  # exp: expression level to require all samples in a group to be equal to or greater
   #
   # Return an index of rows passing the filtering criteria
   ############
 	
-	#Define variables
+  #Define variables
   mtx <- data
   fct <- as.factor(group)
   lvl <- levels(fct)
@@ -19,7 +19,7 @@ ExpFilt <- function(data, group, exp=1){
   idx <- list()
   for (i in 1:length(lvl)) {
   		
-  	#If group has only one sample
+        #If group has only one sample
    	if (length(grep(lvl[i], group)) == 1) {
      		idx.tmp <- row.names(mtx[mtx[,grep(lvl[i], group)] >= exp,])
    	}
