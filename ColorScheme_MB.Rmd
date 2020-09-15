@@ -1,0 +1,84 @@
+---
+title: "ColorKey"
+author: "Matthew Brooks"
+date: "8/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Color schemes
+```{r}
+#Color palettes
+jet <- rev(c("#7F0000","red","#FF7F00","yellow","white","cyan", "#007FFF", "blue","#00007F"))
+
+nnrl.colors <- c("#023858","#3690c0","#fff7bc","#fec44f","#ec7014",
+                                  "#fc4e2a","#e31a1c","#bd0026","#800026")
+mb.colors <- c("#023858","#3690c0", "#e0f3f8","#fff7bc","#fec44f","#ec7014",
+                                "#fc4e2a","#bd0026","#800026")
+
+# mb2.colors <- c("#012439","#023858","#3690c0", "#e0f3f8","#fff7bc","#fec44f","#ec7014",
+#                                 "#fc4e2a","#bd0026","#800026", "#360500")
+mb2.colors <- c("#012439","#023858","#3690c0", "#e0f3f8","#fff7bc","#fec44f","#ec7014",
+                                "#bd0026","#800026", "#360500")
+
+
+# #Generate the breaks for the color scale
+# col.breaks.z <- seq(min(data.HC.z), max(data.HC.z), length.out = 1001)
+# col.breaks.lcpm <- seq(0,16,length = 1001)
+
+# #Color Keys
+# pdf("R_plots/ClusterColor_Z.pdf")
+# par(mar=c(17,10.1,17,10.1),mgp=c(2,0.6,0))
+# image(matrix(unique(col.breaks.z)),col=col.HC, breaks=col.breaks.z,lwd=0,axes=F,main="",xlab="Z-score")
+# labs=seq(-3,3,1)
+# axis(side=1,at=(seq(0,6,1))/6,labels=labs,las=1)
+# dev.off()
+# 
+# pdf("R_plots/ClusterColor_lCPM.pdf")
+# par(mar=c(17,10.1,17,10.1),mgp=c(2,0.6,0))
+# image(matrix(col.breaks.lcpm),col=mb.colors, breaks=col.breaks.lcpm,lwd=0,axes=F,main="",xlab="CPM (log2)")
+# image(matrix(col.breaks.lcpm),col=nnrl.colors, breaks=col.breaks.lcpm,lwd=0,axes=F,main="",xlab="CPM (log2)")
+# labs=seq(0,16,2)
+# #axis(side=1,at=match(seq(0,16,2), col.breaks.lcpm)/length(col.breaks.lcpm),labels=labs,las=1)
+# axis(side=1,at=(labs)/16,labels=labs,las=1)
+# dev.off()
+```
+
+
+# Color schemes
+```{r}
+
+library(plot3D)
+
+pdf("ColorScale_200826.pdf", height = 4, width = 6, useDingbats = F)
+
+par(mfrow = c(1,4))
+
+color = jet
+name = "Jet Color"
+colkey(col = colorRampPalette(color)(n=length(color)), clim = c(0,16),
+       clab = name, width = 2)
+
+color = nnrl.colors
+name = "NNRL Color"
+colkey(col = colorRampPalette(color)(n=length(color)), clim = c(0,16),
+       clab = name, width = 2)
+
+color = mb.colors
+name = "MB Color"
+colkey(col = colorRampPalette(color)(n=length(color)), clim = c(0,16),
+       clab = name, width = 2)
+
+color = mb2.colors
+name = "MB2 Color"
+colkey(col = colorRampPalette(color)(n=length(color)), clim = c(0,16),
+       clab = name, width = 2)
+
+dev.off()
+getwd()
+```
+
