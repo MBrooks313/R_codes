@@ -2,7 +2,7 @@
 #This is the download of the gene and transcript level annotation from Ensembl.
 
 
-ens_nnot <- function(species, release=NULL){
+ens_annot <- function(species, release=NULL){
   
   
   ##################################
