@@ -1,0 +1,560 @@
+---
+title: "Base Project - Data Import and QC"
+output: html_notebook
+---
+#
+##### R Version
+Built with
+`r getRversion()`
+
+```{r setup, include=F, warnings=FALSE}
+knitr::opts_chunk$set(python = reticulate::eng_python)
+library(reticulate)
+#use_virtualenv("r-reticulate")
+use_python("~/anaconda3/bin/python")
+```
+
+
+```{python, echo = FALSE, results = 'asis'}
+import sys
+import os
+sys.path.append(os.path.abspath("../src/data"))
+import config
+annot_ver = config.BASEDIR.split("/")[-2]
+print('This analysis was performed using the Ensembl annotation version: ' + annot_ver)
+```
+
+
+```{python, echo = FALSE, results = 'asis'}
+import json
+import glob
+samples = glob.glob('../data/raw/kallisto/*')
+kal = json.loads(open(samples[1] + '/run_info.json').read())
+print('The transcript-level quantitation was performed using kallisto version: ' + kal["kallisto_version"])
+```
+Here is a hyperlink to [**kallisto**](https://pachterlab.github.io/kallisto/). 
+Gene-level summarization was performed using *tximport* with the "lengthScaledTPM" option.
+Here is a hyperlink to [**tximport**](https://f1000research.com/articles/4-1521/v2).
+The analysis pipeline is described [here](https://neicommons.nei.nih.gov/#/howDataAnalyzed).
+A description of the output files can be found at the bottom of the notebook.
+
+### Project Summary
+
+
+
+#
+#### Meta file
+```{r, echo = FALSE, results = 'asis'}
+meta <- read.csv("../src/data/meta.csv", stringsAsFactors = F)
+meta
+```
+
+#
+#### Experiment sample details - Eliminate samples/levels if needed
+```{r, echo = FALSE, results = 'asis'}
+#Number of samples and levels
+nm <- dim(meta)[1]
+expt.pheno <- factor(meta$Pheno)
+nm.lvl <- length(levels(expt.pheno))
+#
+#Order of samples
+ord <- c()
+ord.lvl <- unique(as.vector(expt.pheno))[c()]
+#
+#Remove outlier samples, if needed
+remove.samp <- NULL
+#remove.samp <- c() #Remove a sample(s)
+#ord.lvl <- c()  #Remove a level
+#
+#Make grp and export suffixes
+if (!is.null(remove.samp)){
+  grp <- factor(expt.pheno[ord[-remove.samp]], levels = ord.lvl)
+  ord <- ord[-remove.samp]
+} else{
+  grp <- factor(expt.pheno[ord], levels = ord.lvl)
+}
+ print("Completed...use all samples.")
+```
+
+#
+## Project Essentials
+
+#
+#### Get custom scripts used for analysis
+```{r, echo = FALSE, results = 'asis'}
+script_dir <- "~/github/R_codes/"
+dest_dir <- "../src/"
+
+system(paste0(script_dir, "ENSannotDownload.R ", dest_dir, "tools"))
+system(paste0(script_dir, "kallistoStats.R ", dest_dir, "tools"))
+system(paste0(script_dir, "starStats.R ", dest_dir, "tools"))
+system(paste0(script_dir, "Expr_Filter.R ", dest_dir, "tools"))
+system(paste0(script_dir, "PCA_simple.R ", dest_dir, "visualization"))
+
+# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ENSannotDownload_v0.3.1.R ../src/tools')
+# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/kallistoStats_v1.1.R ../src/tools')
+# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/starStats_v2.1.R ../src/tools')
+# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/filterFPKM_v1.R ../src/tools')
+# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/PCAplotv0.2.0.R ../src/visualization')
+
+print("Completed...")
+```
+
+#
+#### Get transcript and gene annotation
+```{r, echo = FALSE, results = 'asis'}
+#
+# Get annotation
+#source("../src/tools/ENSannotDownload_v0.2.0.R")
+annot <- ens_annot(species = "Mus Musculus")
+#
+#Import annoation ... BioMart is down
+# annot.gene <- read.csv(file = "../src/external/GeneAnnot.tsv", sep="\t", row.names = 1)
+# annot.trans <- read.csv(file = "../src/external/TransAnnot.tsv", sep="\t", row.names = 1)
+#
+#Create tx2gene needed for tximport
+tx2gene <- data.frame(cbind(as.character(row.names(annot.trans)), as.character(annot.trans$ensembl_gene_id)))
+#
+#Export annotation to project
+#write.table(annot.gene, file = "../src/external/GeneAnnot.tsv", quote=F, sep="\t", col.names = NA)
+#write.table(annot.trans, file = "../src/external/TransAnnot.tsv", quote=F, sep="\t", col.names = NA)
+#
+print("Completed...")
+```
+
+#
+#### Set color scheme and breaks
+```{r, echo = FALSE, results = 'asis'}
+library(wesanderson)
+library(RColorBrewer)
+#
+#Sample colors
+label.col <- wes_palette("Zissou1", 5, "discrete")[c(2,3,1,5)]
+# label.col <- c(label.col, 
+#                wes_palette("Moonrise2", 4, "discrete")[c(1,4,3,2)])
+# label.col <- c(brewer.pal(9, "BuPu")[c(3,8,5)],
+#                brewer.pal(9, "OrRd")[c(3,9,5,7)])
+# label.col <- brewer.pal(8, "Spectral")
+#
+#Sample color palette
+colorsSampPal <- colorRampPalette(label.col)(nm.lvl)
+#pie(x = rep(1,nm.lvl), col = colorsSamp)
+#
+#Assign colors to samples based on grp
+# colorsSamp <- c()
+# for (i in 1:nm.lvl){
+#   tmp.col <- rep(colorsSampPal[i], repl)
+#   colorsSamp <- c(colorsSamp, tmp.col)
+# }
+colorsSamp <- colorsSampPal[grp]
+#
+# if (!is.null(remove.samp)){
+#   colorsSamp <- colorsSamp[-remove.samp]
+# } else{
+#   colorsSamp <- colorsSamp
+# }
+#
+#Heatmap colors
+jet <- c("#7F0000","red","#FF7F00","yellow","white","cyan", "#007FFF", "blue","#00007F")
+#
+#Alignment plot colors
+colorsAlign <- wes_palette(n=5, name = "Zissou1")[c(1,3,5)]
+#
+#Look at color assignments
+pie(x = rep(1,nm.lvl), col = colorsSampPal, main = "Sample Group", labels = levels(grp))
+```
+
+
+#
+## Import Data
+#
+#### Import kallisto data and summarize to gene-level
+```{r, echo = F, message = F}
+library(tximport)
+library(readr)
+#
+#########
+#kallisto results location
+wd <- "../data/raw/kallisto"
+samples <- dir(path=wd, pattern=".+")
+files <- file.path(wd, samples, "abundance.tsv")
+names(files) <- meta$Rid #Temp don't forget to change
+#
+#Import trans data
+trans <- tximport(files, txOut=T, type = "kallisto", importer = read_tsv, tx2gene = NULL)
+rnames <- gsub("(.+)\\..+", "\\1", row.names(trans$abundance), perl=T)
+row.names(trans$abundance) <- rnames
+row.names(trans$counts) <- rnames
+row.names(trans$length) <- rnames
+#
+#Summarize to gene
+gene <- summarizeToGene(trans, tx2gene, countsFromAbundance = "lengthScaledTPM")
+
+print(paste0("Abundance was estimated for ", dim(gene$counts)[1], " genes in this annotation."))
+```
+
+#
+#### TMM Normalize the data
+```{r, echo = FALSE, results = 'asis', message=F}
+library(edgeR)
+#
+#Transcript-level normalization
+trans.dge <- DGEList(trans$counts[,ord], group = grp, genes = annot.trans[row.names(trans$counts),])
+trans.dge <- calcNormFactors(trans.dge)
+trans.dge$rpkm <- rpkm(trans.dge, gene.length = "transcript_length")
+trans.dge$lrpkm <- log2(trans.dge$rpkm + 1)
+#
+#Gene-level normalization
+gene.dge <- DGEList(gene$counts[,ord], group = grp, genes = annot.gene[row.names(gene$counts),])
+gene.dge <- calcNormFactors(gene.dge)
+gene.dge$cpm <- cpm(gene.dge)
+gene.dge$lcpm <- log2(gene.dge$cpm + 1)
+gene.dge$ltpm <- log2(gene$abundance[,ord] + 1)
+#
+#View the data frames
+#trans.dge$rpkm[1:6, 1:6]
+#gene.dge$cpm[1:6, 1:6]
+print("Completed...")
+```
+
+#
+## Export Interim and Final Data
+#
+#### Export TMM transcript and gene level data using all genes
+```{r, echo = FALSE, results = 'asis'}
+#Export raw kallisto outputs
+write.table(trans$counts, file="../data/interim/Trans_Counts_raw.tsv", quote=F, sep="\t", col.names = NA)
+write.table(trans$abundance, file="../data/interim/Trans_TPM_raw.tsv", quote=F, sep="\t", col.names = NA)
+write.table(trans$length, file="../data/interim/Trans_EffLength_raw.tsv", quote=F, sep="\t", col.names = NA)
+#
+write.table(gene$counts, file="../data/interim/Gene_Counts_raw.tsv", quote=F, sep="\t", col.names = NA)
+write.table(gene$abundance, file="../data/interim/Gene_TPM_raw.tsv", quote=F, sep="\t", col.names = NA)
+write.table(gene$length, file="../data/interim//Gene_EffLength_raw.tsv", quote=F, sep="\t", col.names = NA)
+
+#
+#Export transcript tables
+write.table(data.frame(merge(trans.dge$genes, trans.dge$rpkm, by=0), row.names=1), 
+            file="../data/processed/Trans_RPKM_MSTR.tsv", quote=F, sep="\t", col.names = NA)
+write.table(data.frame(merge(trans.dge$genes, trans.dge$lrpkm, by=0), row.names=1), 
+            file="../data/processed/Trans_log2RPKM_MSTR.tsv", quote=F, sep="\t", col.names = NA)
+
+#
+#Export gene tables
+write.table(data.frame(merge(annot.gene, gene.dge$cpm, by=0), row.names=1), 
+            file="../data/processed/Gene_CPM_MSTR.tsv", quote=F, sep="\t", col.names = NA)
+write.table(data.frame(merge(annot.gene, gene.dge$lcpm, by=0), row.names=1), 
+            file="../data/processed/Gene_log2CPM_MSTR.tsv", quote=F, sep="\t", col.names = NA)
+
+print("Completed...")
+```
+
+#
+#### Perform expression filtered normalization and export final data
+```{r, echo = FALSE, results = 'asis'}
+source("../src/tools/filterFPKM_v1.R")
+#
+#Expression level for gene filtering
+exprlvl = 5
+#
+#Filter data for those expressed
+filterFPKM(as.data.frame(gene.dge$cpm), grp, exp = exprlvl)
+#
+#Perform normalization for DE
+gene.dge.filt <- gene.dge[idx.filt, , keep.lib.sizes=FALSE]
+gene.dge.filt <- calcNormFactors(gene.dge.filt)
+gene.dge.filt$cpm <- cpm(gene.dge.filt, log=F)
+gene.dge.filt$lcpm <- log2(gene.dge.filt$cpm + 1)
+#
+#Export the normalized filtered CPM values
+write.table(data.frame(merge(gene.dge.filt$genes, gene.dge.filt$cpm, by = 0), row.names = 1), 
+            file=paste0("../data/processed/Gene_filtCPM_MSTR_", exprlvl, "CPM.tsv"), 
+            quote=F, sep="\t", col.names = NA)
+
+print(paste0("Number of genes after filtering for ", exprlvl, " CPM: ", dim(gene.dge.filt)[1]))
+```
+
+#
+## Quality Control
+#
+#### Summarize alignment stats and make alignment barplot 
+```{r, echo = FALSE, message='as is'}
+source("../src/tools/kallistoStats_v1.1.R")
+source("../src/tools/starStats_v2.1.R")
+#
+###########
+#Get alignment statostics
+starStats("../data/raw/star")
+kalStats("../data/raw/kallisto/")
+#
+#Alignment stats
+stats <- data.frame(merge(star.percs,star.stats, by=0), row.names=1)
+row.names(stats) <- gsub("(.+)\\.star.+", "\\1", row.names(stats), perl=T)
+row.names(stats) <- gsub(".+\\/(.+)", "\\1", row.names(stats), perl=T)
+stats <- data.frame(merge(meta[1:2],stats, by.x=1, by.y=0), row.names=1)
+stats <- cbind(stats[ord,], kal.stats[ord, 2:3])
+colnames(stats)[10:11] <- c("kal-Align", "kal-Percentage")
+write.table(stats[ord,], file="../data/processed/StarAlignStats.tsv", 
+            quote=F, sep="\t", col.names = NA)
+#
+#Prep for alignments table
+fastq <- kal.stats$Total
+bam <- star.stats$UniqueMap + star.stats$MultiMap
+rna <- kal.stats$Align
+
+aligns.table <- t(as.matrix(cbind(rna, bam - rna, fastq - bam)))
+row.names(aligns.table) <- c("trans", "genome","unaligned")
+colnames(aligns.table) <- meta$Rid
+aligns.table <- aligns.table[,ord]
+
+write.table(t(aligns.table), file="../data/processed/AlignsTable.tsv", 
+            quote=F, sep="\t", col.names = NA)
+#
+#Get the transcriptome and genome alignment percentages
+perc.a <- 100*(colSums(aligns.table[1:2,])/colSums(aligns.table))
+perc.a <- round(perc.a, digits=1)
+perc.t <- kal.stats$Percentage[ord]
+
+#Plot Alignments
+pdf("../data/processed/Alignments.pdf", width = length(ord)*0.5+2, height = 6, useDingbats = F)
+par(las=2, mar=c(6,5,4,1))
+aligns.bar <- barplot(aligns.table/1000000, ylab="Sequencing Reads (millions)",
+                      col=colorsAlign, names.arg=colnames(aligns.table), cex.lab=1.5)
+legend("bottomleft", cex= 1.25, legend=c("Unaligned", "Genome-only", "Transcriptome"), fill=rev(colorsAlign), bg="white")
+text(x=aligns.bar, y=aligns.table[1,]/1000000-0.5, paste(perc.t,"%", sep=""), xpd=TRUE, cex=0.75)
+text(x=aligns.bar, y=colSums(aligns.table[1:2,])/1000000+0.5, paste(perc.a,"%", sep=""), xpd=TRUE, cex=0.75)
+dev.off()
+
+#
+#Plot alignment for notebook
+par(las=2, mar=c(6,5,4,1))
+aligns.bar <- barplot(aligns.table/1000000, ylab="Sequencing Reads (millions)",
+                      col=colorsAlign, names.arg=colnames(aligns.table), cex.names = 0.6)
+legend("bottomleft", cex= 0.75, legend=c("Unaligned", "Genome-only", "Transcriptome"), fill=rev(colorsAlign), bg="white")
+text(x=aligns.bar, y=aligns.table[1,]/1000000-0.5, paste(perc.t,"%", sep=""), xpd=TRUE, cex=0.35)
+text(x=aligns.bar, y=colSums(aligns.table[1:2,])/1000000+0.5, paste(perc.a,"%", sep=""), xpd=TRUE, cex=0.35)
+
+
+```
+
+#
+#### Render PCA on all samples
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+
+library(plot3D)
+library(PCAtools)
+
+#
+#Prep the PCA data
+pca.all <- PCAtools::pca(gene.dge.filt$lcpm, metadata = data.frame(meta[ord,], row.names = 2))
+pca.all$metadata$Treatment <- factor(pca.all$metadata$Pheno)
+# pca.all$metadata$Age <- factor(pca.all$metadata$Age)
+# pca.all$metadata$Geno <- factor(pca.all$metadata$Geno)
+# pca.all$metadata$Expt <- factor(pca.all$metadata$Expt)
+pca.all$metadata$Group <- grp
+sampkey <- unique(colorsSamp)
+names(sampkey) <- unique(pca.all$metadata$Group)
+#
+screeplot(pca.all)
+#
+#Plot the eigencorplot
+# eigencorplot(pca.all, metavars = names(pca.all$metadata[c(2)]),
+#              main = "Correlation of PCs to Meta Features")
+#
+#Plot the pairsplot
+#pairsplot(pca.all, colby = "Group", colkey = sampkey, components = seq_len((5)))
+#
+#Plot all the samples
+X='PC1'; Y='PC2'
+biplot(pca.all, x = X, y = Y,
+       colby = "Group", colkey = sampkey,
+       lab = T, labSize = 2,
+       legendPosition = 'right', 
+       title = 'PCA All Samples',
+       subtitle = paste0(X, ' versus ', Y))
+
+#Plot all the samples
+X='PC2'; Y='PC3'
+biplot(pca.all, x = X, y = Y,
+       colby = "Group", colkey = sampkey,
+       lab = T, labSize = 2,
+       legendPosition = 'right', 
+       title = 'PCA All Samples',
+       subtitle = paste0(X, ' versus ', Y))
+
+
+
+```
+#### *When all the samples are looked at together the cntl samples are separated from the mutants along a combination of PC1 and PC2.
+- Matthew*
+
+#
+#### Distance plot
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+library(rafalib)
+#
+#Calculate sample distance
+gene.dist <- dist(t(gene.dge.filt$lcpm))
+samp.hc <- hclust(gene.dist, method="ward.D2")
+#
+#Export dendrogram plot
+pdf(file="../data/processed/HCsampDendro.pdf", width=8, height=4, useDingbats = F)
+par(mar=c(18,4,1,1))
+myplclust(samp.hc,lab=samp.hc$labels, lab.col = colorsSamp)
+dev.off()
+#
+#Make sample distance plot for notebook
+myplclust(samp.hc,lab=samp.hc$labels, lab.col = colorsSamp)
+```
+
+#
+#### Correlation plot
+```{r, echo = FALSE, , message=FALSE, warning=FALSE}
+library(Hmisc)
+library(corrplot)
+#
+#Calculate correlations
+data.cor <- rcorr(as.matrix(gene.dge.filt$lcpm))
+#
+#Correlation plot
+pdf(file="../data/processed/CorrplotSamp.pdf", width=8, height=8, useDingbats = F)
+corrplot(data.cor$r, method="color", cl.cex=1.25, tl.col=colorsSamp,tl.cex=2, cl.lim=range(data.cor$r),
+         col=colorRampPalette(rev(jet), bias=0.04)(1000))
+#col=colorRampPalette(rev(jet), bias=0.175)(1000),order="hclust", hclust.method="ward.D2")
+dev.off()
+#
+#Make sample correlation plot for notebook
+corrplot(data.cor$r, method="color", cl.cex=1.25, tl.col=colorsSamp,tl.cex=0.75, cl.lim=range(data.cor$r),
+         col=colorRampPalette(rev(jet), bias=0.025)(1000))
+```
+
+# Rs1 Gene Expression
+```{r, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+
+library(tidyr)
+library(tibble)
+library(ggrepel)
+
+# List of GOIs
+goi.indi <- c("Rs1", "Cdh1", "Cdh2")
+
+#Prep the data
+chrs <- c(1:22, "X", "Y")
+dat_tmp <- data.frame(merge(annot.gene, gene.dge$cpm, by = 0), row.names = 1)
+dat_tmp <- dat_tmp %>% 
+  dplyr::filter(chromosome_name %in% chrs)
+dat_tmp <- dat_tmp[,c(5,10:24)]
+
+# Loop for each gene
+for (i in goi.indi){
+  
+  # Subset the data
+  dat_goi <- dat_tmp %>% 
+  dplyr::filter(external_gene_name %in% i) %>%
+  gather(Sample, CPM, -external_gene_name)
+  
+  # Check if data exists
+  if (dim(dat_goi)[1 > 0]){
+    
+    #Add grp info
+    dat_goi$Geno <- grp
+    
+    # Plot
+    p <-  ggplot(dat_goi, aes(Geno, CPM, color = Geno)) +
+      geom_point(size = 2) + 
+      scale_colour_manual(values = unique(colorsSamp)) +
+      labs(title = i, x=NULL, y="CPM") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+      #theme(legend.position = "top", legend.title = element_blank()) +
+      theme(legend.position = "none") +
+      theme(plot.title = element_text(hjust = 0, size = 24)) +
+      geom_text_repel(data = dat_goi,
+                      aes(label = Sample),
+                      nudge_y = 0.1, nudge_x = .1, min.segment.length = 0.1, direction = "y")
+
+  ggsave(p, filename = paste("../data/processed/IndiPlot_", i, ".pdf", sep = ""),
+         device = "pdf",height = 4, width = 6)
+  print(p)
+  }
+  
+}
+
+```
+
+
+#
+### Session Information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+#
+## Explanation of Output Files
+
+#### File structure of the data
+
+* data
+    + external
+    + interim
+    + processed   
+    + raw
+        - kallisto
+        - star
+* notebooks
+
+#
+#### Output File Description
+
+Output files from analysis contain both tab-separated values table (.tsv), as well as, plots in pdf form. The tsv tables can be opened in Excel.
+
+#
+##### 'data/external'
+Not used in this analysis.
+
+#
+##### 'data/interim'
+Output from kallisto and tximport. This data is NOT normalized and shouldn't be used 'as is'.
+
+* Trans_Counts_raw.tsv
+    + Kallisto transcript-level counts
+* Trans_EffLength_raw.tsv
+    + Bias corrected effective transcript length
+* Trans_TPM_raw.tsv
+    + Transcript-level transcript-per-million (TPM) expression values
+* Gene_Counts_raw.tsv
+    + Tximport gene-level counts
+* Gene_EffLength_raw.tsv
+    + Bias corrected effective gene length
+* Gene_TPM_raw.tsv
+    + Gene-level transcript-per-million (TPM) expression values
+
+#
+##### 'data/processed'
+
+* Gene_CPM_MSTR.tsv
+    + Full TMM normalized gene-level results for all the genes in the annotation. Expression values are in counts-per-million (CPM). The Gene_log2CPM_MSTR.tsv file is the same except values are expressed as log2 with 1 offset.
+* Gene_filtCPM_MSTR_1CPM.tsv
+    + CPM filtered gene-level results of the full data table
+* Trans_RPKM_MSTR.tsv
+    + Full TMM normalized transcript-level results for all the transcripts in the annotation. Expression values are in reads-per-kilobase-per-million reads (RPKM). The Trans_log2RPKM_MSTR.tsv file is the same except values are expressed as log2 with 1 offset. 
+* AlignmentStats.tsv
+    + The alignment stats from the star and kallisto alignments. Kallisto results are marked as such in the column headers.
+* gProfileR_Cluster.tsv
+    + The full functional gene enrichment analysis output
+* gProf_Clust
+    + Directory containing the visualization results from the functional gene enrichment analysis
+        - Heatmaps : heatmaps of all the top enriched categories using log2 CPM values 
+
+#
+##### 'data/raw
+The raw kallisto data and star alignment summaries. If you need the actual BAM files from the star alignment the transfer can be arranged.
+
+
+
+
+
+
+
+
+
+
+
