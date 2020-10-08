@@ -10,8 +10,8 @@ Built with
 ```{r setup, include=F, warnings=FALSE}
 knitr::opts_chunk$set(python = reticulate::eng_python)
 library(reticulate)
-#use_virtualenv("r-reticulate")
-use_python("~/anaconda3/bin/python")
+use_virtualenv("r-reticulate")
+#use_python("~/anaconda3/bin/python")
 ```
 
 
@@ -58,8 +58,8 @@ expt.pheno <- factor(meta$Pheno)
 nm.lvl <- length(levels(expt.pheno))
 #
 #Order of samples
-ord <- c()
-ord.lvl <- unique(as.vector(expt.pheno))[c()]
+ord <- c(1:nm)
+ord.lvl <- unique(as.vector(expt.pheno))[c(1:nm.lvl)]
 #
 #Remove outlier samples, if needed
 remove.samp <- NULL
@@ -85,17 +85,11 @@ if (!is.null(remove.samp)){
 script_dir <- "~/github/R_codes/"
 dest_dir <- "../src/"
 
-system(paste0(script_dir, "ENSannotDownload.R ", dest_dir, "tools"))
-system(paste0(script_dir, "kallistoStats.R ", dest_dir, "tools"))
-system(paste0(script_dir, "starStats.R ", dest_dir, "tools"))
-system(paste0(script_dir, "Expr_Filter.R ", dest_dir, "tools"))
-system(paste0(script_dir, "PCA_simple.R ", dest_dir, "visualization"))
-
-# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ENSannotDownload_v0.3.1.R ../src/tools')
-# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/kallistoStats_v1.1.R ../src/tools')
-# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/starStats_v2.1.R ../src/tools')
-# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/filterFPKM_v1.R ../src/tools')
-# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/PCAplotv0.2.0.R ../src/visualization')
+system(paste0("cp ", script_dir, "ENSannotDownload.R ", dest_dir, "tools"))
+system(paste0("cp ", script_dir, "kallistoStats.R ", dest_dir, "tools"))
+system(paste0("cp ", script_dir, "starStats.R ", dest_dir, "tools"))
+system(paste0("cp ", script_dir, "Expr_Filter.R ", dest_dir, "tools"))
+system(paste0("cp ", script_dir, "PCA_simple.R ", dest_dir, "visualization"))
 
 print("Completed...")
 ```
@@ -105,15 +99,15 @@ print("Completed...")
 ```{r, echo = FALSE, results = 'asis'}
 #
 # Get annotation
-#source("../src/tools/ENSannotDownload_v0.2.0.R")
-annot <- ens_annot(species = "Mus Musculus")
+source(paste0(dest_dir, "/tools/ENSannotDownload.R"))
+annot <- ens_annot(species = "Mus musculus", release = "94")
 #
 #Import annoation ... BioMart is down
 # annot.gene <- read.csv(file = "../src/external/GeneAnnot.tsv", sep="\t", row.names = 1)
 # annot.trans <- read.csv(file = "../src/external/TransAnnot.tsv", sep="\t", row.names = 1)
 #
 #Create tx2gene needed for tximport
-tx2gene <- data.frame(cbind(as.character(row.names(annot.trans)), as.character(annot.trans$ensembl_gene_id)))
+tx2gene <- data.frame(cbind(as.character(row.names(annot$trans)), as.character(annot$trans$ensembl_gene_id)))
 #
 #Export annotation to project
 #write.table(annot.gene, file = "../src/external/GeneAnnot.tsv", quote=F, sep="\t", col.names = NA)
@@ -199,13 +193,13 @@ print(paste0("Abundance was estimated for ", dim(gene$counts)[1], " genes in thi
 library(edgeR)
 #
 #Transcript-level normalization
-trans.dge <- DGEList(trans$counts[,ord], group = grp, genes = annot.trans[row.names(trans$counts),])
+trans.dge <- DGEList(trans$counts[,ord], group = grp, genes = annot$trans[row.names(trans$counts),])
 trans.dge <- calcNormFactors(trans.dge)
 trans.dge$rpkm <- rpkm(trans.dge, gene.length = "transcript_length")
 trans.dge$lrpkm <- log2(trans.dge$rpkm + 1)
 #
 #Gene-level normalization
-gene.dge <- DGEList(gene$counts[,ord], group = grp, genes = annot.gene[row.names(gene$counts),])
+gene.dge <- DGEList(gene$counts[,ord], group = grp, genes = annot$gene[row.names(gene$counts),])
 gene.dge <- calcNormFactors(gene.dge)
 gene.dge$cpm <- cpm(gene.dge)
 gene.dge$lcpm <- log2(gene.dge$cpm + 1)
@@ -240,9 +234,9 @@ write.table(data.frame(merge(trans.dge$genes, trans.dge$lrpkm, by=0), row.names=
 
 #
 #Export gene tables
-write.table(data.frame(merge(annot.gene, gene.dge$cpm, by=0), row.names=1), 
+write.table(data.frame(merge(annot$gene, gene.dge$cpm, by=0), row.names=1), 
             file="../data/processed/Gene_CPM_MSTR.tsv", quote=F, sep="\t", col.names = NA)
-write.table(data.frame(merge(annot.gene, gene.dge$lcpm, by=0), row.names=1), 
+write.table(data.frame(merge(annot$gene, gene.dge$lcpm, by=0), row.names=1), 
             file="../data/processed/Gene_log2CPM_MSTR.tsv", quote=F, sep="\t", col.names = NA)
 
 print("Completed...")
@@ -251,13 +245,13 @@ print("Completed...")
 #
 #### Perform expression filtered normalization and export final data
 ```{r, echo = FALSE, results = 'asis'}
-source("../src/tools/filterFPKM_v1.R")
+source("../src/tools/Expr_Filter.R")
 #
 #Expression level for gene filtering
 exprlvl = 5
 #
 #Filter data for those expressed
-filterFPKM(as.data.frame(gene.dge$cpm), grp, exp = exprlvl)
+ExpFilt(as.data.frame(gene.dge$cpm), grp, exp = exprlvl)
 #
 #Perform normalization for DE
 gene.dge.filt <- gene.dge[idx.filt, , keep.lib.sizes=FALSE]
@@ -278,9 +272,9 @@ print(paste0("Number of genes after filtering for ", exprlvl, " CPM: ", dim(gene
 #
 #### Summarize alignment stats and make alignment barplot 
 ```{r, echo = FALSE, message='as is'}
-source("../src/tools/kallistoStats_v1.1.R")
-source("../src/tools/starStats_v2.1.R")
-#
+source("../src/tools/kallistoStats.R")
+source("../src/tools/starStats.R")
+
 ###########
 #Get alignment statostics
 starStats("../data/raw/star")
@@ -384,8 +378,7 @@ biplot(pca.all, x = X, y = Y,
 
 
 ```
-#### *When all the samples are looked at together the cntl samples are separated from the mutants along a combination of PC1 and PC2.
-- Matthew*
+
 
 #
 #### Distance plot
@@ -427,7 +420,7 @@ corrplot(data.cor$r, method="color", cl.cex=1.25, tl.col=colorsSamp,tl.cex=0.75,
          col=colorRampPalette(rev(jet), bias=0.025)(1000))
 ```
 
-# Rs1 Gene Expression
+# Individual Gene Expression
 ```{r, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
 
 library(tidyr)
@@ -439,10 +432,10 @@ goi.indi <- c("Rs1", "Cdh1", "Cdh2")
 
 #Prep the data
 chrs <- c(1:22, "X", "Y")
-dat_tmp <- data.frame(merge(annot.gene, gene.dge$cpm, by = 0), row.names = 1)
+dat_tmp <- data.frame(merge(annot$gene, gene.dge$cpm, by = 0), row.names = 1)
 dat_tmp <- dat_tmp %>% 
   dplyr::filter(chromosome_name %in% chrs)
-dat_tmp <- dat_tmp[,c(5,10:24)]
+dat_tmp <- dat_tmp[,c(5,10:dim(dat_tmp)[2])]
 
 # Loop for each gene
 for (i in goi.indi){
