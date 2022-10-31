@@ -22,11 +22,11 @@ dot_go <- function(dat, top, grp, desc, p.val, ratio, filenm){
   
   #Select on the the top specified number
   if (!is.na(top)) {
-    dat <- dat %>% group_by_(grp) %>% arrange_(p.val) %>% top_n(top, desc(!!as.symbol(p.val))) %>% as.data.frame
+    dat <- dat %>% group_by_(grp) %>% arrange_(p.val) %>% top_n(top, dplyr::desc(!!as.symbol(p.val))) %>% as.data.frame
   }
   
   #Prep the data table
-  dat[,`grp`] <- factor(dat[,`grp`], levels = mixedsort(levels(factor(dat[,`grp`])))) #Factorize the group using a natural sort
+  # dat[,`grp`] <- factor(dat[,`grp`], levels = mixedsort(levels(factor(dat[,`grp`])))) #Factorize the group using a natural sort
   dat <- dat[order(dat[,`grp`], dat[,`p.val`]),] #Order by group and p value
   dat[,`desc`] <- substring(dat[,`desc`], 1, 60) #Cut description name to 60 characters
   dat[,`desc`] <- factor(dat[,`desc`], levels = rev(unique(dat[,`desc`]))) #Factorize the order of descriptions
