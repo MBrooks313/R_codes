@@ -1,0 +1,1732 @@
+---
+title: "Drug treated zebrafish dye retinal mutant models - Differential Expression"
+output: html_notebook
+---
+
+#
+##### R Version
+Built with `r getRversion()`
+
+#
+## Project Essentials
+
+#
+#### Load data
+```{r, echo=FALSE, results='asis'}
+# load("RNAseq_Analysis_v0.3.1.RData")
+print("Completed...")
+```
+
+#
+#### Get custom scripts used for analysis
+```{r,echo=FALSE, results='asis'}
+# system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/MBave.R ../src/tools')
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/et_edgeR_v0.1.0.R ../src/tools")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/FuncGeneEnrich_v0.1.0.R ../src/tools")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/GO_leaf_v1.1.R ../src/tools")
+# 
+# #system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/APk_cluster_BF_v0.1.0.R ../src/tools')
+# #system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/HM_PCAsort_BF_v0.1.0.R ../src/visualization')
+# #system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/parPlot_hc_v0.2.0.R ../src/visualization')
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/PCA_simple_v0.1.0.R ../src/visualization")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/VolcanoPlot_v0.1.0.R ../src/visualization")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/Heatmap_v1.7.R ../src/visualization")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/Dotplot_GO_v1.0.R ../src/visualization")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/Barplot_GO_v1.0.R ../src/visualization")
+# system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/Heatmap_GO_v1.0.R ../src/visualization")
+
+system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/APk_cluster_BF_v0.1.0.R ../src/tools')
+system('cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/HM_PCAsort_BF_v0.1.0.R ../src/visualization')
+system("cp /Volumes/PEGASUS/Projects/BioInf_Scripts/R_functions/ggplots/VolcanoPlot_v0.1.2.R ../src/visualization")
+print("Completed...")
+```
+
+#### Set color scheme and breaks
+```{r, echo=FALSE, fig.height = 1.5, fig.width = 1.5}
+library(wesanderson)
+library(RColorBrewer)
+library(viridis)
+
+#
+#Cluster palette
+clust.pal <- brewer.pal(8, "Spectral")
+#
+#Heatmap colors
+jet <- c("#7F0000","red","#FF7F00","yellow","white","cyan", "#007FFF", "blue","#00007F")
+colorsZ <- colorRampPalette(rev(jet))(1000)
+#nnrl.colors <- colorRampPalette(c("#023858","#3690c0","#fff7bc","#fec44f","#ec7014",
+#                                  "#fc4e2a","#e31a1c","#bd0026","#800026"))(n=1000)
+mb.col <- c("#023858","#3690c0","#e0f3f8","#fff7bc","#fec44f","#ec7014","#fc4e2a","#bd0026","#800026")
+colorsCPM <- colorRampPalette(mb.col)(n=1000)
+#
+#colorsVir <- viridis_pal(option = "C")(1000)
+#
+#Generate the breaks for the color scale
+col.breaksZ <- seq(-3, 3, length.out = 1001)
+col.breaksCPM <- seq(0,16,length = 1001)
+#
+#Color Keys
+pdf("../data/processed/Key_Z.pdf", useDingbats = F)
+par(mar=c(17,10.1,17,10.1),mgp=c(2,0.6,0))
+image(matrix(unique(col.breaksZ)),col=colorsZ, breaks=col.breaksZ,lwd=0,axes=F,main="",xlab="Z-score")
+labs=seq(-3,3,1)
+axis(side=1,at=(seq(0,6,1))/6,labels=labs,las=1)
+dev.off()
+#
+pdf("../data/processed/Key_lCPM.pdf", useDingbats = F)
+par(mar=c(17,10.1,17,10.1),mgp=c(2,0.6,0))
+image(matrix(col.breaksCPM),col=colorsCPM, breaks=col.breaksCPM,lwd=0,axes=F,main="",xlab="CPM (log2)")
+labs=seq(0,16,2)
+axis(side=1,at=(labs)/16,labels=labs,las=1)
+dev.off()
+#
+#Look at color assignments
+#pie(x = rep(1,nm.lvl), col = colorsSampPal, main = "Sample Group", labels = levels(grp))
+pie(x = rep(1,length(jet)), col = rev(jet), main = "Z-score Key", labels = seq(-3,3,0.75))
+pie(x = rep(1,length(mb.col)), col = mb.col, main = "CPM Key", labels = seq(0,16,2))
+```
+#
+# Define Datasets for Analysis
+
+#
+#### Subset needed objects for the particular experiment
+```{r, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+source("../src/tools/filterFPKM_v1.R")
+#Expression level for gene filtering
+exprlvl = 5
+
+#--------------------
+# Data for Expt 0 samples - Control vs dye from Expt 1
+
+# Samples needed
+samps <- meta$Expt[ord] == 1
+samps.de <- meta$Expt[ord] == 1 & meta$Treatment[ord] == "DMSO"
+  
+# Group information
+grp_e0 <-factor(grp[samps])#, levels = levels(grp)[c(1:3)])
+
+# ColorsSamp
+colorsSamp_e0 <- colorsSampPal[factor(grp[samps])]
+
+# Expression data for all samps in expt
+expdat_e0 <- gene.dge$lcpm[, samps]
+  
+# DGE object sub and filter
+gene_dge_e0 <- gene.dge[,samps.de]
+filterFPKM(as.data.frame(cpm(gene_dge_e0)), factor(grp[samps.de]), exp = exprlvl)
+gene_dge_e0 <- gene_dge_e0[idx.filt, , keep.lib.sizes=FALSE]
+gene_dge_e0 <- calcNormFactors(gene_dge_e0)
+gene_dge_e0$cpm <- cpm(gene_dge_e0, log=F)
+gene_dge_e0$lcpm <- log2(gene_dge_e0$cpm + 1)
+
+# Results directory name
+res_e0 <- "Expt_0"
+
+# Create results directory
+dir.create(paste0("../data/processed/", res_e0), showWarnings = FALSE)
+pie(x = rep(1,3), col = unique(colorsSamp_e0), main = res_e0, labels = levels(factor(grp[samps])))
+
+
+#--------------------
+# Data for Expt 1 samples
+
+# Samples needed
+samps <- meta$Expt[ord] == 1
+samps.de <- meta$Expt[ord] == 1 & meta$Geno[ord] == "dye"
+  
+# Group information
+grp_e1 <-factor(grp[samps])#, levels = levels(grp)[c(1:3)])
+
+# ColorsSamp
+colorsSamp_e1 <- colorsSampPal[factor(grp[samps])]
+
+# Expression data for all samps in expt
+expdat_e1 <- gene.dge$lcpm[, samps]
+  
+# DGE object sub and filter
+gene_dge_e1 <- gene.dge[,samps.de]
+filterFPKM(as.data.frame(cpm(gene_dge_e1)), factor(grp[samps.de]), exp = exprlvl)
+gene_dge_e1 <- gene_dge_e1[idx.filt, , keep.lib.sizes=FALSE]
+gene_dge_e1 <- calcNormFactors(gene_dge_e1)
+gene_dge_e1$cpm <- cpm(gene_dge_e1, log=F)
+gene_dge_e1$lcpm <- log2(gene_dge_e1$cpm + 1)
+
+# Results directory name
+res_e1 <- "Expt_1"
+
+# Create results directory
+dir.create(paste0("../data/processed/", res_e1), showWarnings = FALSE)
+pie(x = rep(1,3), col = unique(colorsSamp_e1), main = res_e1, labels = levels(factor(grp[samps])))
+
+
+#--------------------
+# Data for Expt 2a samples
+
+# Samples needed
+samps <- meta$Expt[ord] == 2 & !meta$Treatment[ord] == "TubA_Ana"
+samps.de <- meta$Expt[ord] == 2 & meta$Geno[ord] == "dye" & !meta$Treatment[ord] == "TubA_Ana"
+
+# Group information
+grp_e2a <-factor(grp[samps])
+#grp_e2a_de <-factor(grp[samps.de])#, levels = levels(grp)[c(1:3)])
+
+# ColorsSamp
+colorsSamp_e2a <- colorsSampPal[4:6][factor(grp[samps])]
+
+# Expression data for all samps in expt
+expdat_e2a <- gene.dge$lcpm[, samps]
+
+# DGE object sub and filter
+gene_dge_e2a <- gene.dge[,samps.de]
+filterFPKM(as.data.frame(cpm(gene_dge_e2a)), factor(grp[samps.de]), exp = exprlvl)
+gene_dge_e2a <- gene_dge_e2a[idx.filt, , keep.lib.sizes=FALSE]
+gene_dge_e2a <- calcNormFactors(gene_dge_e2a)
+gene_dge_e2a$cpm <- cpm(gene_dge_e2a, log=F)
+gene_dge_e2a$lcpm <- log2(gene_dge_e2a$cpm + 1)
+
+# Results directory name
+res_e2a <- "Expt_2a"
+
+# Create results directory
+dir.create(paste0("../data/processed/", res_e2a), showWarnings = FALSE)
+pie(x = rep(1,3), col = unique(colorsSamp_e2a), main = res_e2a, labels = levels(factor(grp[samps])))
+
+
+#--------------------
+# Data for Expt 2b samples
+
+# Samples needed
+samps <- meta$Expt[ord] == 2 & !meta$Treatment[ord] == "TubA"
+samps.de <- meta$Expt[ord] == 2 & meta$Geno[ord] == "dye" & !meta$Treatment[ord] == "TubA"
+
+# Group information
+grp_e2b <-factor(grp[samps])#, levels = levels(grp)[c(1:3)])
+
+# ColorsSamp
+colorsSamp_e2b <- colorsSampPal[c(4,5,7)][factor(grp[samps])]
+
+# Expression data for all samps in expt
+expdat_e2b <- gene.dge$lcpm[, samps]
+
+# DGE object sub and filter
+gene_dge_e2b <- gene.dge[,samps.de]
+filterFPKM(as.data.frame(cpm(gene_dge_e2b)), factor(grp[samps.de]), exp = exprlvl)
+gene_dge_e2b <- gene_dge_e2b[idx.filt, , keep.lib.sizes=FALSE]
+gene_dge_e2b <- calcNormFactors(gene_dge_e2b)
+gene_dge_e2b$cpm <- cpm(gene_dge_e2b, log=F)
+gene_dge_e2b$lcpm <- log2(gene_dge_e2b$cpm + 1)
+
+# Results directory name
+res_e2b <- "Expt_2b"
+
+# Create results directory
+dir.create(paste0("../data/processed/", res_e2b), showWarnings = FALSE)
+pie(x = rep(1,3), col = unique(colorsSamp_e2b), main = res_e2b, labels = levels(factor(grp[samps])))
+
+
+#--------------------
+# Data for Expt 1 samples with ctrl_DMSO - Aug 20, 2020 MJB
+
+# Samples needed
+samps <- meta$Expt[ord] == 1
+samps.de <- meta$Expt[ord] == 1
+  
+# Group information
+grp_e1_anova <-factor(grp[samps])#, levels = levels(grp)[c(1:3)])
+
+# ColorsSamp
+colorsSamp_e1_anova <- colorsSampPal[factor(grp[samps])]
+
+# Expression data for all samps in expt
+expdat_e1_anova <- gene.dge$lcpm[, samps]
+  
+# DGE object sub and filter
+gene_dge_e1_anova <- gene.dge[,samps.de]
+gene_dge_e1_anova$genes <- annot[match(row.names(gene_dge_e1_anova$counts), annot$SYMBOL), c(3:5,2)]
+filterFPKM(as.data.frame(cpm(gene_dge_e1_anova)), factor(grp[samps.de]), exp = exprlvl)
+gene_dge_e1_anova <- gene_dge_e1_anova[idx.filt, , keep.lib.sizes=FALSE]
+gene_dge_e1_anova <- calcNormFactors(gene_dge_e1_anova)
+gene_dge_e1_anova$cpm <- cpm(gene_dge_e1_anova, log=F)
+gene_dge_e1_anova$lcpm <- log2(gene_dge_e1_anova$cpm + 1)
+
+# Results directory name
+res_e1_anova <- "Expt_1_anova"
+
+# Create results directory
+dir.create(paste0("../data/processed/", res_e1_anova), showWarnings = FALSE)
+pie(x = rep(1,3), col = unique(colorsSamp_e1_anova), main = res_e1_anova, labels = levels(factor(grp[samps])))
+
+```
+
+# ____________________________________________________________
+# Experiment 0 - dye vs cntl from Expt 1 data
+# 
+### Perform differential expression - cntl_e1_DMSO used as the reference
+This is a direct pair-wise comparison of the effect of dye in the dye mutant. 
+The EdgeR exact test is used for DE analysis.
+
+*Fold change is set for 1.5 and FDR is set at 5%.*
+
+**DE Results: Down -  genes, Up -  genes**
+```{r,echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+source("../src/tools/et_edgeR_v0.1.0.R")
+source("../src/tools/MBave.R")
+source("../src/visualization/VolcanoPlot_v0.1.0.R")
+source("../src/visualization/Heatmap_v1.7.R")
+
+
+# Set DE filtering criteria 
+fc <- 0.585
+fdr <- 0.05
+
+# Perform DE analysis
+et_edgeR(dge = gene_dge_e0, expt.nm = res_e0, fc = fc, fdr = fdr, 
+         res.path = "../data/processed/Expt_0/")
+
+# y <- gene_dge_e0
+#   
+#   # Estimate dispersions needed for exact test
+#   y <- estimateCommonDisp(y)
+#   y <- estimateTagwiseDisp(y)
+#   
+#   # Perform DE exact test
+#   et <- exactTest(y)
+#   et$table$FDR <- p.adjust(et$table$PValue, method = "fdr")
+#   
+#   # Filter for significance
+#   et.sig <- et$table %>%
+#     rownames_to_column('gene') %>% 
+#     filter(FDR < fdr, abs(logFC) >= fc) %>% 
+#     column_to_rownames('gene')
+#   
+#   # Merge results tables
+#   et_results <- list(all = data.frame(merge(et$genes, et$table, by = 0), row.names = 1),
+#                  sig = data.frame(merge(et$genes[row.names(et.sig),], et.sig, by = 0), row.names = 1))
+#   
+#   assign(paste0("et_results_Expt_0"), et_results, envir = .GlobalEnv)
+  
+  # ------------------------
+# Make volcano plot
+p <- volPlot(dat = et_results_Expt_0$all, FC.nm = "logFC", FDR.nm = "FDR", 
+        fc = fc, fdr = fdr, expt.nm = res_e0, sym.lab = FALSE, 
+        res.path = "../data/processed/Expt_0/", ret = TRUE)
+
+p <- p + geom_text_repel(data = filter(et_results_Expt_0$all %>% 
+                                         # rownames_to_column('gene') %>% 
+                                    mutate(FDR = -log10(FDR)), 
+                                  FDR > -log10(0.001) & abs(logFC) >= 3),
+                    aes(label = SYMBOL),
+                    nudge_y = 0.25, nudge_x = 1.25, min.segment.length = 0.25, direction = "y")
+print(p)
+
+# Save volcano plot
+pdf(paste0("../data/processed/Expt_0/", res_e0, "_vol.pdf"), 
+      width = 8, 
+      height = 8, 
+      useDingbats = F)
+print(p)
+dev.off()
+
+cowplot::ggsave2(paste0("../data/processed/Expt_0/", res_e0, "_vol.svg"), 
+                 units = "in",
+                 width = 8,
+                 height=8)
+cowplot::ggsave2(paste0("../data/processed/Expt_0/", res_e0, "_vol.jpg"), 
+                 units = "in",
+                 width = 8,
+                 height=8)
+#------------------------------------
+# Make heatmap of DE genes
+
+#Subset for DE
+expdat <- expdat_e0[row.names(et_results_Expt_0$sig), ]
+
+#Take average
+expdat.ave <- MBave(expdat, grp_e0)
+
+#Generate the Z-score
+expdat.ave.z <- t(scale(t(expdat.ave), scale = T, center = T))
+
+#Remove duplicated genes
+#annot.gene.expdat <- annot.gene[row.names(expdat),]
+#dups <- row.names(annot.gene.expdat[duplicated(annot.gene.expdat$external_gene_name), ])
+#annot.gene.expdat <- annot.gene.expdat[!row.names(annot.gene.expdat) %in% dups,]
+
+#Subset final expdats and make mstr
+expdat.cpm <- data.frame(merge(gene_dge_e0$genes, expdat.ave, by = 0), row.names = 1)
+colnames(expdat.cpm)[1] <- "external_gene_name"
+expdat.z <- data.frame(merge(gene_dge_e0$genes, expdat.ave.z, by = 0), row.names = 1)
+colnames(expdat.z)[1] <- "external_gene_name"
+# expdat.cpm <- expdat.ave %>% 
+#   rownames_to_column('external_gene_name')
+# expdat.z <- expdat.ave.z %>% data.frame() %>% 
+#   rownames_to_column('external_gene_name')
+
+#Heatmap of Z-score
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_Z"))
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_Z"))
+# Re-export 210225
+p <- heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:6, sort_col = 5:6, 
+           base = "Zscore", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_Z_210225"))
+cowplot::ggsave2(filename = paste0("../data/processed/Expt_0/", res_e0, "_Z_210225_v2.pdf"),
+                 plot = p,
+                 height = 6, width = 6)
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:6, sort_col = 5:6, 
+           base = "Zscore", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_Z_210225"))
+
+
+#Heatmap of CPM
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_CPM"))
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_CPM"))
+# Re-export 210225
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:6, sort_col = 5:6, 
+           base = "CPM", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_CPM_210225"))
+p <- heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:6, sort_col = 5:6, 
+           base = "CPM", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_0/", res_e0, "_CPM_210225"))
+cowplot::ggsave2(filename = paste0("../data/processed/Expt_0/", res_e0, "_CPM_210225_v2.pdf"),
+                 plot = p,
+                 height = 6, width = 6)
+```
+
+
+#
+#### Perform functional gene enrichment using gProfiler
+```{r, echo=FALSE, results="asis", warning=FALSE, message=FALSE}
+library(gProfileR)
+library(org.Dr.eg.db)
+
+source("../src/tools/FuncGeneEnrich_v0.1.0.R")
+source("../src/tools/GO_leaf_v1.1.R")
+source("../src/visualization/Dotplot_GO_v1.0.R")
+source("../src/visualization/Barplot_GO_v1.0.R")
+source("../src/visualization/Heatmap_GO_v1.0.R")
+
+#Get up and down names
+dat <- et_results_Expt_0$sig
+# cl.list <- list(Down = row.names(dat[dat$logFC < fc & dat$FDR < fdr,]),
+#                 Up = row.names(dat[dat$logFC > fc & dat$FDR < fdr,]))
+cl.list <- list(Down = (dat[dat$logFC < fc & dat$FDR < fdr,1]),
+                Up = (dat[dat$logFC > fc & dat$FDR < fdr,1]))
+
+#Perform gene enrichment analysis
+gpout.e0 <- gprofiler(query = cl.list , organism = "drerio", custom_bg = gene_dge_e0$genes$SYMBOL)
+#
+#Save the results
+write.table(gpout.e0, file = paste0("../data/processed/", res_e1, "/gProfileR_ET.tsv"), 
+            quote=F, sep="\t", col.names = NA)
+
+fge(dat = expdat.cpm, gpout = gpout.e0, catnm = 10, paths = c("rea", "keg", "BP"), 
+    dat_col = 5:7, sym_col = 1, samp_ord = 1:3, expt.nm = res_e0, 
+    res.path = "../data/processed/Expt_0/")
+
+
+print("Completed...")
+```
+
+# Interogate specific pathways for Expt 0
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(reactome.db)
+library(org.Dr.eg.db)
+library(tibble)
+#chrs <- c(1:25, "X", "Y")
+
+#Get pathways and IDs
+reactP2E <- as.list(reactomePATHID2EXTID)
+reactP2D <- as.list(reactomePATHID2NAME)
+#react.mm <- reactP2D[grep("-MMU-", names(reactP2D))]
+
+#Misc to look up pathway
+# pathway <- "HIF"
+# react.p <- names(reactP2D[grep(pathway, reactP2D)])
+# react.p <- react.p[grep("-DRE-", react.p)]
+# react.ez <- reactP2E[[react.p]]
+
+dat_col = 5:13
+sort_col = 5:13
+
+###############################################################################
+# Autophagy
+rct <- "R-DRE-1632852"
+path_nm <- "Autophagy"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+react.ez <- reactP2E[[rct]]
+react.sym <- AnnotationDbi::select(org.Dr.eg.db, keys = react.ez, keytype = "ENTREZID", columns = "SYMBOL")[,2]
+react.sym <- react.sym[!duplicated(react.sym)]
+
+dat.mstr <- data.frame(merge(annot_gene, gene.dge$lcpm, by.x = 1, by.y = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+#dat.mstr <- gene.dge$lcpm %>% data.frame %>% rownames_to_column('external_gene_name')
+dat.mstr <- dat.mstr[dat.mstr$external_gene_name %in% unique(react.sym), ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(dat.mstr$external_gene_name %in% et_results_Expt_0$sig$SYMBOL, "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+# Indi samples
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = sort_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=paste("Reactome:", rct , path_nm, sep = " ")) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Save volcano plot
+pdf(paste0("../data/processed/Expt_0/", path_nm, "_HM.pdf"), 
+      width = 8, 
+      height = 8, 
+      useDingbats = F)
+print(p)
+dev.off()
+
+# 
+# # Averaged samples
+# dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp_e1), dat.mstr$sig)
+# p <- heatmap_MB(expdat = dat.mstr, 
+#            sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+#            base = "CPM", cluster = "HC", symb = T,
+#            filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+# col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+# p <- p + labs(subtitle=path_nm) +
+#       theme(axis.text.y = element_text(colour = col.sig))
+# print(p)
+# 
+# # Pull out the genes from the DE analysis
+et_Expt1_autophagy <- et_results_Expt_0$all[et_results_Expt_0$all$SYMBOL %in% react.sym,] 
+et_Expt1_autophagy_sig <- et_results_Expt_0$sig[et_results_Expt_0$sig$SYMBOL %in% react.sym,] 
+
+```
+
+
+
+
+# ____________________________________________________________
+# Experiment 1 - DHF Treatment
+# 
+### Perform differential expression - dye_5dpf_DMSO used as the reference
+This is a direct pair-wise comparison of the effect of DHF in the dye mutant. 
+The EdgeR exact test is used for DE analysis.
+
+*Fold change is set for 1.5 and FDR is set at 5%.*
+
+**DE Results: Down - 82 genes, Up - 274 genes**
+```{r,echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+source("../src/tools/et_edgeR_v0.1.0.R")
+source("../src/tools/MBave.R")
+source("../src/visualization/VolcanoPlot_v0.1.0.R")
+source("../src/visualization/Heatmap_v1.7.R")
+
+
+# Set DE filtering criteria 
+fc <- 0.585
+fdr <- 0.05
+
+# Perform DE analysis
+et_edgeR(dge = gene_dge_e1, expt.nm = res_e1, fc = fc, fdr = fdr, 
+         res.path = "../data/processed/Expt_1/")
+
+
+# ------------------------
+# Make volcano plot
+p <- volPlot(dat = et_results_Expt_1$all, FC.nm = "logFC", FDR.nm = "FDR", 
+        fc = fc, fdr = fdr, expt.nm = res_e1, sym.lab = FALSE, 
+        res.path = "../data/processed/Expt_1/", ret = TRUE)
+
+p <- p + geom_text_repel(data = filter(et_results_Expt_1$all %>% 
+                                         # rownames_to_column('gene') %>% 
+                                    mutate(FDR = -log10(FDR)), 
+                                  FDR > -log10(0.001) & abs(logFC) >= 1),
+                    aes(label = SYMBOL),
+                    nudge_y = 0.25, nudge_x = 1.25, min.segment.length = 0.25, direction = "y")
+print(p)
+
+# Save volcano plot
+pdf(paste0("../data/processed/Expt_1/", res_e1, "_vol.pdf"), 
+      width = 8, 
+      height = 6, 
+      useDingbats = F)
+print(p)
+dev.off()
+
+
+#------------------------------------
+# Make heatmap of DE genes
+
+#Subset for DE
+expdat <- expdat_e1[row.names(et_results_Expt_1$sig), ]
+
+#Take average
+expdat.ave <- MBave(expdat, grp_e1)
+
+#Generate the Z-score
+expdat.ave.z <- t(scale(t(expdat.ave), scale = T, center = T))
+
+#Remove duplicated genes
+#annot.gene.expdat <- annot.gene[row.names(expdat),]
+#dups <- row.names(annot.gene.expdat[duplicated(annot.gene.expdat$external_gene_name), ])
+#annot.gene.expdat <- annot.gene.expdat[!row.names(annot.gene.expdat) %in% dups,]
+
+#Subset final expdats and make mstr
+expdat.cpm <- data.frame(merge(gene_dge_e1$genes, expdat.ave, by = 0), row.names = 1)
+colnames(expdat.cpm)[1] <- "external_gene_name"
+expdat.z <- data.frame(merge(gene_dge_e1$genes, expdat.ave.z, by = 0), row.names = 1)
+colnames(expdat.z)[1] <- "external_gene_name"
+# expdat.cpm <- expdat.ave %>% 
+#   rownames_to_column('external_gene_name')
+# expdat.z <- expdat.ave.z %>% data.frame() %>% 
+#   rownames_to_column('external_gene_name')
+
+#Heatmap of Z-score
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_Z"))
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_Z"))
+# Re-export 210225
+p <- heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 6:7, sort_col = 6:7, 
+           base = "Zscore", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_Z_210225"))
+cowplot::ggsave2(filename = paste0("../data/processed/Expt_1/", res_e1, "_Z_210225_v2.pdf"),
+                 plot = p, height = 6, width = 6)
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 6:7, sort_col = 6:7, 
+           base = "Zscore", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_Z_210225"))
+
+#Heatmap of CPM
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_CPM"))
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_CPM"))
+# Re-export 210225
+p <- heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 6:7, sort_col = 6:7, 
+           base = "CPM", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_CPM_210225"))
+cowplot::ggsave2(filename = paste0("../data/processed/Expt_1/", res_e1, "_CPM_210225_v2.pdf"),
+                 plot = p, height = 6, width = 6)
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 6:7, sort_col = 6:7, 
+           base = "CPM", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_1/", res_e1, "_CPM_210225"))
+```
+
+
+#
+#### Perform functional gene enrichment using gProfiler
+```{r, echo=FALSE, results="asis", warning=FALSE, message=FALSE}
+library(gProfileR)
+library(org.Dr.eg.db)
+
+source("../src/tools/FuncGeneEnrich_v0.1.0.R")
+source("../src/tools/GO_leaf_v1.1.R")
+source("../src/visualization/Dotplot_GO_v1.0.R")
+source("../src/visualization/Barplot_GO_v1.0.R")
+source("../src/visualization/Heatmap_GO_v1.0.R")
+
+#Get up and down names
+dat <- et_results_Expt_1$sig
+# cl.list <- list(Down = row.names(dat[dat$logFC < fc & dat$FDR < fdr,]),
+#                 Up = row.names(dat[dat$logFC > fc & dat$FDR < fdr,]))
+cl.list <- list(Down = (dat[dat$logFC < fc & dat$FDR < fdr,1]),
+                Up = (dat[dat$logFC > fc & dat$FDR < fdr,1]))
+
+#Perform gene enrichment analysis
+gpout.e1 <- gprofiler(query = cl.list , organism = "drerio", custom_bg = gene_dge_e1$genes$SYMBOL)
+#
+#Save the results
+write.table(gpout.e1, file = paste0("../data/processed/", res_e1, "/gProfileR_ET.tsv"), 
+            quote=F, sep="\t", col.names = NA)
+
+fge(dat = expdat.cpm, gpout = gpout.e1, catnm = 10, paths = c("rea", "keg", "BP"), 
+    dat_col = 5:7, sym_col = 1, samp_ord = 1:3, expt.nm = res_e1, 
+    res.path = "../data/processed/Expt_1/")
+
+
+print("Completed...")
+```
+
+
+
+# ____________________________________________________________
+# Experiment 1 - DHF Treatment ANOVA - Added Aug 20th, 2020 - MJB
+# 
+### Perform differential expression - cntl_DMSO used as the reference
+This is an ANOVA-like comparison of the effect of dye mutant and DHF in the dye mutant. 
+The limma GLM is used for DE analysis.
+
+```{r,echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+#Set up ANOVA-like difference
+mod <- model.matrix(~grp_e1_anova)
+colnames(mod) <- gsub("grp_e1_anovadye_", "", colnames(mod))
+mod
+
+#Set thresholds
+fc <- 0.585
+fdr <- 0.05
+
+#Perform Limma-voom
+v <- voom(gene_dge_e1_anova, mod, plot = T)
+
+#Fit the data and perform eBayes
+fit <- lmFit(v, mod)
+#fit <- contrasts.fit(fit, coef=c(2:12))
+fit <- eBayes(fit)
+de <- topTable(fit, coef = c(2:ncol(mod)), number = Inf)
+
+#Filter ANOVA DE for significance
+de.anova <- c()
+de.anova$all <- topTable(fit, coef = c(2:ncol(mod)), number = Inf, lfc = 0, p.value = 1)
+de.anova$sig <- topTable(fit, coef = c(2:ncol(mod)), number = Inf, lfc = fc, p.value = fdr)
+
+#Export results
+write.table(de.anova$all, paste0("../data/processed/", res_e1_anova, "/DE.", res_e1_anova, ".all.tsv"), sep = "\t", quote = F, col.names = NA)
+write.table(de.anova$sig, paste0("../data/processed/", res_e1_anova, "/DE.", res_e1_anova, ".sig.tsv"), sep = "\t", quote = F, col.names = NA)
+#
+#Print results to notebook
+results <- decideTests(fit, p.value=fdr, lfc = fc)
+summary(results)
+vennDiagram(results[,c(2:ncol(mod))])
+
+
+```
+
+#
+##Cluster Analysis and Functional Gene Enrichment
+
+#
+####Average the data and get Z-score
+```{r}
+source("../src/tools/MBave.R")
+
+#
+#Get the average log2 CPM expression per group for plotting
+gene_dge_e1_anova$lcpm_ave <- MBave(dat = gene_dge_e1_anova$lcpm, grp = grp_e1_anova)
+#
+##Get the averaged Z-score for the DE sig genes
+de.anova$aveSigZ <- t(scale(t(gene_dge_e1_anova$lcpm_ave[row.names(de.anova$sig),]), center = T, scale = T))
+```
+
+#
+####Examine the clustering of the data
+```{r, results="hide", fig.height=6, fig.width=6}
+library(gplots)
+
+#
+#Set cluster number
+clustnm <- 10
+#  
+#Distance and clust functions to be used
+distfunc <- function(x) dist(x,method="euclidean")
+hclustfunc <- function(x) hclust(x, method="ward.D2")
+#
+#Get distance and heirarchical clustering
+d <- distfunc(as.matrix(de.anova$aveSigZ))
+hc <- hclustfunc(d)
+#
+#Cut the dendrogram tree to get cluster number
+clusters <- cutree(hc, k=clustnm)
+nofclust.clust <-  length(unique(as.vector(clusters)));
+#
+#Generate test heatmap to look at the clustering
+HM <- heatmap.2(as.matrix(de.anova$aveSigZ), scale=NULL, dendrogram="row",Colv=NULL,trace="none", density.info="none", key = F,
+                col=colorsZ, breaks = col.breaksZ, labRow = NULL,
+                lmat = rbind(c(5,0,4),c(3,1,2)), lwid = c(1.5,0.2,4), lhei = c(0.1,5),
+                distfun=distfunc,
+                hclustfun=hclustfunc,
+                RowSideColors = as.character(as.vector(clusters)))
+```
+It looks like there is more than 8 clusters, therefor set the cluster number to 10 and perform Affinity Propogation clustering.
+
+#
+####Cluster using Affinity Propogation
+```{r}
+source("../src/tools/APk_cluster_BF_v0.1.0.R")
+
+#
+#Set cluster number based on previous evaluation
+clustnm <- 10
+#
+#Cluster the data with AP
+cluster.apK(de.anova$aveSigZ, nk = clustnm, pc=1)
+#
+```
+
+
+####Generate Heatmap and Additional Plots
+```{r, results="hide"}
+library(tidyverse)
+source("../src/visualization/HM_PCAsort_BF_v0.1.0.R")
+# source("../src/visualization/parPlot_hc_v0.1.0.R")
+# source("../src/visualization/parPlot_hc_v0.2.0.R")
+
+chrs <- c(1:22, "X", "Y")
+#
+#Set cluster color scheme
+colorsClust <- colorRampPalette(clust.pal)(n=length(clust.list))
+#
+# Change the custer list names
+clust.list2 <- clust.list
+clust.list2 <- clust.list2[c(5,1,3,10,8,7,4,2,9,6)] 
+
+# Reorder the zscore df by the new cluster list names
+zscore.sort2 <- data.frame()
+for (z in 1:length(clust.list2)){
+  tmp_z <- zscore.sort[row.names(zscore.sort) %in% clust.list2[[z]],]
+  zscore.sort2 <- rbind(zscore.sort2, tmp_z)
+}
+
+# Get cluster-gene info
+clust2_gene <- data.frame()
+for (i in 1:length(clust.list2)){
+  tmp_df <- data.frame(Clust = i,
+                       Gene = clust.list2[[i]])
+  clust2_gene <- rbind(clust2_gene, tmp_df)
+  }
+
+
+# Save the clusters
+de.anova$sig <- data.frame(merge(de.anova$sig, clust2_gene, by.x=0, by.y=2), row.names = 1)
+# test <- data.frame(merge(de.anova$sig, clust2_gene, by.x=0, by.y=2), row.names = 1)
+
+
+# Export the results
+write.table(de.anova$sig, file=paste0("../data/processed/", res_e1_anova, "/DE.", res_e1_anova, ".sig.tsv"), quote=F, sep="\t", col.names = NA)
+
+
+#Heirarchical cluster plot for notebook
+# hm.clust_BF(zscore.sort, clst = clust.list, col.pal = rev(jet), sidebar.pal = clust.pal, sidebar = T)
+p <- hm.clust_BF(zscore.sort2, clst = clust.list2, col.pal = rev(jet), sidebar.pal = clust.pal, sidebar = T)
+print(p)
+
+pdf(file = paste0("../data/processed/", res_e1_anova, "/DE.", res_e1_anova, "_hm.pdf"), 
+    height = 6, width = 3, useDingbats = F)
+print(p)
+dev.off()
+
+
+#
+#Parallel plots
+# parPlot_hc(eset=de.anova$aveSigZ, cl = de.anova$sig$cluster, ord=sort(unique(de.anova$sig$cluster)), 
+#            mfrow = c(3,4), col.cl = colorsClust, time.labels = levels(grp), fn = "../data/processed/DE.anova_parPlot")
+#
+#Parallel plots for notebook
+# parPlot_embed(eset=de.anova$aveSigZ, cl = de.anova$sig$cluster, ord=sort(unique(de.anova$sig$cluster)), 
+#            mfrow = c(3,4), col.cl = colorsClust, time.labels = levels(grp))
+```
+
+
+#
+####Perform functional gene enrichment using gProfiler
+```{r, results="hide", warning=FALSE, message=FALSE}
+library(plyr)
+library(gProfileR)
+library(org.Dr.eg.db)
+
+#
+#Helper function for generating list of gene IDs
+# dfunlist <- function(df){as.character(df[,1])}
+#
+#Generate cluster List
+# df.clust <- cbind(row.names(de.anova$sig), de.anova$sig[dim(de.anova$sig)[2]])
+# cl.list <- dlply(df.clust, "cluster", .fun = dfunlist)
+# #
+#Perform gene enrichment analysis
+gpout.cl_anova <- gprofiler(query = clust.list2 , organism = "drerio")
+#
+#Save the results
+write.table(gpout.cl_anova, file = paste0("../data/processed/", res_e1_anova, "/gProfileR_Cluster.tsv"), quote=F, sep="\t", col.names = NA)
+
+```
+
+#### Perform functional gene enrichment using gProfiler
+```{r, echo=FALSE, results="asis", warning=FALSE, message=FALSE}
+
+source("../src/tools/FuncGeneEnrich_v0.1.0.R")
+source("../src/tools/GO_leaf_v1.1.R")
+source("../src/visualization/Dotplot_GO_v1.0.R")
+source("../src/visualization/Barplot_GO_v1.0.R")
+source("../src/visualization/Heatmap_GO_v1.0.R")
+
+df <- data.frame(merge(gene_dge_e1_anova$genes, 
+                       gene_dge_e1_anova$lcpm_ave[row.names(de.anova$sig),], 
+                       by.x = 1, by.y = 0))
+colnames(df)[1] <- "external_gene_name"
+fge(dat = df, gpout = gpout.cl_anova, catnm = 20, paths = c("rea", "keg", "BP"), 
+    dat_col = 5:7, sym_col = 1, samp_ord = c(1,3,2), expt.nm = res_e1_anova, 
+    res.path = paste0("../data/processed/", res_e1_anova))
+
+
+print("Completed...")
+```
+
+
+#### Make vol plots of results
+```{r, echo=FALSE, results="asis", warning=FALSE, message=FALSE}
+source("../src/visualization/VolcanoPlot_v0.1.2.R")
+
+library(ggplot2)
+library(ggrepel)
+
+# Get the gene names of cluster 4 and 10
+sig_clust <- de.anova$sig %>% 
+  filter(Clust %in% c(4,9,10)) %>% 
+  dplyr::select("SYMBOL") %>% 
+  unlist(use.names = F)
+sig_clust <- sig_clust[!is.na(sig_clust)]
+
+# Make a column in all data for the DHF affected genes and FC for DHF vs dye
+dat <- de.anova$all %>% 
+  #filter(Clust %in% c(4,10)) %>% 
+  mutate(DHF = case_when(
+      SYMBOL %in% sig_clust ~ 'DHF_Effect', 
+      TRUE ~ 'None')) %>% 
+  mutate(DHF_dye = (e1_DHF - e1_DMSO))
+
+
+# Prep the data table marking significantly changing genes in DHF vs dye and whether DHF changes them in the wanted direction
+dat <- dat %>%
+  mutate(SIG = case_when(
+    adj.P.Val < fdr & (DHF_dye <= -fc | DHF_dye >= fc) & DHF == "DHF_Effect" ~ 'DHF_Effect',
+    adj.P.Val < fdr & (DHF_dye <= -fc | DHF_dye >= fc) & DHF == "None" ~ 'sig',
+    TRUE ~ 'nsig')) %>% 
+  mutate(FDR = -log10(adj.P.Val))
+  
+
+  
+# Volcano plot
+# FC.nm = "e1_DMSO"; FDR.nm = "adj.P.Val"; expt.nm = "dye_cntl_DHF"
+FC.nm = "DHF_dye"; FDR.nm = "adj.P.Val"; expt.nm = "DHF vs dye"
+
+p <- ggplot(dat, aes_string(FC.nm, 'FDR')) +
+  geom_point(aes(fill = SIG, color = SIG), alpha = 0.5, size = 1.75, pch = 21) +
+  scale_fill_manual(values = c('sig' = "red", 'nsig' = "grey70", 'DHF_Effect' = 'blue')) +
+  scale_color_manual(values = c('sig' = "red", 'nsig' = "grey70", 'DHF_Effect' = 'blue')) +
+  xlab("Fold Change (log2)") + ylab("FDR (-log10)") +
+  geom_hline(yintercept = -log10(fdr), linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = c(-fc, fc), linetype = "dashed", alpha = 0.5) +
+  theme_classic() +
+  guides(fill = "none") +
+  labs(subtitle = paste0("Volcano Plot - ", expt.nm)) +
+  annotate("text", label = paste0("FDR: ", fdr),
+           y = fdr + 0.205,
+           x = range(dat[, FC.nm])[1] + 0.25) +
+  annotate("text", label = paste0("FC: ", round(2^fc, 2)),
+           y = range(dat[, FDR.nm])[2],
+           x = 0)
+
+# Label the points
+p <- p +
+geom_text_repel(data = filter(dat, abs(DHF_dye) > 2 & FDR > -log10(0.05)),
+                    aes(label = SYMBOL),
+                    nudge_y = 0.25, nudge_x = 0.25, 
+                    min.segment.length = 0.25, 
+                    direction = "both", 
+                    segment.color = "grey70")
+
+print(p)
+
+pdf(file = paste0("../data/processed/", res_e1_anova, "/DHF_vs_dye_volcano.pdf"), 
+    height = 6, width = 8, useDingbats = F)
+print(p)
+dev.off()
+
+
+```
+
+
+
+# ____________________________________________________________
+# Experiment 2 - TubA
+# 
+### Perform differential expression - dye_6dpf_DMSO used as the reference
+This is a direct pair-wise comparison of the effect of TubA in the dye mutant. 
+The EdgeR exact test is used for DE analysis.
+
+*Fold change is set for 1.5 and FDR is set at 5%.*
+
+**DE Results: Down - 92 genes, Up - 79 genes**
+```{r,echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+source("../src/tools/et_edgeR_v0.1.0.R")
+source("../src/tools/MBave.R")
+source("../src/visualization/VolcanoPlot_v0.1.0.R")
+source("../src/visualization/Heatmap_v1.7.R")
+
+
+# Set DE filtering criteria 
+fc <- 0.585
+fdr <- 0.05
+
+# Perform DE analysis
+et_edgeR(dge = gene_dge_e2a, expt.nm = res_e2a, fc = fc, fdr = fdr, 
+         res.path = "../data/processed/Expt_2a/")
+
+
+# ------------------------
+# Make volcano plot
+p <- volPlot(dat = et_results_Expt_2a$all, FC.nm = "logFC", FDR.nm = "FDR", 
+        fc = fc, fdr = fdr, expt.nm = res_e2a, sym.lab = FALSE, 
+        res.path = "../data/processed/Expt_2a/", ret = TRUE)
+
+p <- p + geom_text_repel(data = filter(et_results_Expt_2a$all %>% 
+                                         # rownames_to_column('gene') %>% 
+                                    mutate(FDR = -log10(FDR)), 
+                                  FDR > -log10(0.01) & abs(logFC) >= 1),
+                    aes(label = SYMBOL),
+                    nudge_y = 0.25, nudge_x = 1.25, min.segment.length = 0.25, direction = "y")
+print(p)
+
+# Save volcano plot
+pdf(paste0("../data/processed/Expt_2a/", res_e2a, "_vol.pdf"), 
+      width = 8, 
+      height = 6, 
+      useDingbats = F)
+print(p)
+dev.off()
+
+
+#------------------------------------
+# Make heatmap of DE genes
+
+#Subset for DE
+expdat <- expdat_e2a[row.names(et_results_Expt_2a$sig), ]
+
+#Take average
+expdat.ave <- MBave(expdat, grp_e2a)
+
+#Generate the Z-score
+expdat.ave.z <- t(scale(t(expdat.ave), scale = T, center = T))
+
+# #Remove duplicated genes
+# annot.gene.expdat <- annot.gene[row.names(expdat),]
+# dups <- row.names(annot.gene.expdat[duplicated(annot.gene.expdat$external_gene_name), ])
+# annot.gene.expdat <- annot.gene.expdat[!row.names(annot.gene.expdat) %in% dups,]
+
+#Subset final expdats and make mstr
+# expdat.cpm <- data.frame(merge(annot.gene.expdat, expdat.ave, by = 0), row.names = 1)
+# expdat.z <- data.frame(merge(annot.gene.expdat, expdat.ave.z, by = 0), row.names = 1)
+# expdat.cpm <- expdat.ave %>% 
+#   rownames_to_column('external_gene_name')
+# expdat.z <- expdat.ave.z %>% data.frame() %>% 
+#   rownames_to_column('external_gene_name')
+#   #Subset final expdats and make mstr
+expdat.cpm <- data.frame(merge(gene_dge_e2a$genes, expdat.ave, by = 0), row.names = 1)
+colnames(expdat.cpm)[1] <- "external_gene_name"
+expdat.z <- data.frame(merge(gene_dge_e2a$genes, expdat.ave.z, by = 0), row.names = 1)
+colnames(expdat.z)[1] <- "external_gene_name"
+
+#Heatmap of Z-score
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_2a/", res_e2a, "_Z"))
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_2a/", res_e2a, "_Z"))
+
+#Heatmap of CPM
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_2a/", res_e2a, "_CPM"))
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_2a/", res_e2a, "_CPM"))
+```
+
+#
+#### Perform functional gene enrichment using gProfiler
+```{r, echo=FALSE, results="asis"}
+library(gProfileR)
+library(org.Dr.eg.db)
+
+source("../src/tools/FuncGeneEnrich_v0.1.0.R")
+source("../src/tools/GO_leaf_v1.1.R")
+source("../src/visualization/Dotplot_GO_v1.0.R")
+source("../src/visualization/Barplot_GO_v1.0.R")
+source("../src/visualization/Heatmap_GO_v1.0.R")
+
+#Get up and down names
+dat <- et_results_Expt_2a$sig
+# cl.list <- list(Down = row.names(dat[dat$logFC < fc & dat$FDR < fdr,]),
+#                 Up = row.names(dat[dat$logFC > fc & dat$FDR < fdr,]))
+cl.list <- list(Down = (dat[dat$logFC < fc & dat$FDR < fdr,1]),
+                Up = (dat[dat$logFC > fc & dat$FDR < fdr,1]))
+
+#Perform gene enrichment analysis
+gpout.e2a <- gprofiler(query = cl.list , organism = "drerio", custom_bg = gene_dge_e2a$genes$SYMBOL)
+#
+#Save the results
+write.table(gpout.e2a, file = paste0("../data/processed/", res_e2a, "/gProfileR_ET.tsv"), 
+            quote=F, sep="\t", col.names = NA)
+
+fge(dat = expdat.cpm, gpout = gpout.e2a, catnm = 10, paths = c("rea", "keg", "BP"), 
+    dat_col = 5:7, sym_col = 1, samp_ord = 1:3, expt.nm = res_e2a, 
+    res.path = "../data/processed/Expt_2a/")
+
+
+print("Completed...")
+```
+
+
+
+
+
+# ____________________________________________________________
+# Experiment 2 - TubA_Ana
+# 
+### Perform differential expression - dye_6dpf_DMSO used as the reference
+This is a direct pair-wise comparison of the effect of TubA-Ana in the dye mutant. 
+The EdgeR exact test is used for DE analysis.
+
+*Fold change is set for 1.5 and FDR is set at 5%.*
+
+**DE Results: Down - 367 genes, Up - 203 genes**
+```{r,echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+source("../src/tools/et_edgeR_v0.1.0.R")
+source("../src/tools/MBave.R")
+source("../src/visualization/VolcanoPlot_v0.1.0.R")
+source("../src/visualization/Heatmap_v1.7.R")
+
+
+# Set DE filtering criteria 
+fc <- 0.585
+fdr <- 0.05
+
+# Perform DE analysis
+et_edgeR(dge = gene_dge_e2b, expt.nm = res_e2b, fc = fc, fdr = fdr, 
+         res.path = "../data/processed/Expt_2b/")
+
+
+# ------------------------
+# Make volcano plot
+p <- volPlot(dat = et_results_Expt_2b$all, FC.nm = "logFC", FDR.nm = "FDR", 
+        fc = fc, fdr = fdr, expt.nm = res_e2b, sym.lab = FALSE, 
+        res.path = "../data/processed/Expt_2b/", ret = TRUE)
+
+p <- p + geom_text_repel(data = filter(et_results_Expt_2b$all %>% 
+                                         # rownames_to_column('gene') %>% 
+                                    mutate(FDR = -log10(FDR)), 
+                                  FDR > -log10(0.01) & abs(logFC) >= 1.5),
+                    aes(label = SYMBOL),
+                    nudge_y = 0.25, nudge_x = 1.25, min.segment.length = 0.25, direction = "y")
+print(p)
+
+# Save volcano plot
+pdf(paste0("../data/processed/Expt_2b/", res_e2b, "_vol.pdf"), 
+      width = 8, 
+      height = 6, 
+      useDingbats = F)
+print(p)
+dev.off()
+
+
+#------------------------------------
+# Make heatmap of DE genes
+
+#Subset for DE
+expdat <- expdat_e2b[row.names(et_results_Expt_2b$sig), ]
+
+#Take average
+expdat.ave <- MBave(expdat, grp_e2b)
+
+#Generate the Z-score
+expdat.ave.z <- t(scale(t(expdat.ave), scale = T, center = T))
+
+# #Remove duplicated genes
+# annot.gene.expdat <- annot.gene[row.names(expdat),]
+# dups <- row.names(annot.gene.expdat[duplicated(annot.gene.expdat$external_gene_name), ])
+# annot.gene.expdat <- annot.gene.expdat[!row.names(annot.gene.expdat) %in% dups,]
+
+#Subset final expdats and make mstr
+# expdat.cpm <- data.frame(merge(annot.gene.expdat, expdat.ave, by = 0), row.names = 1)
+# expdat.z <- data.frame(merge(annot.gene.expdat, expdat.ave.z, by = 0), row.names = 1)
+# expdat.cpm <- expdat.ave %>% 
+#   rownames_to_column('external_gene_name')
+# expdat.z <- expdat.ave.z %>% data.frame() %>% 
+#   rownames_to_column('external_gene_name')
+expdat.cpm <- data.frame(merge(gene_dge_e2b$genes, expdat.ave, by = 0), row.names = 1)
+colnames(expdat.cpm)[1] <- "external_gene_name"
+expdat.z <- data.frame(merge(gene_dge_e2b$genes, expdat.ave.z, by = 0), row.names = 1)
+colnames(expdat.z)[1] <- "external_gene_name"
+
+#Heatmap of Z-score
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_2b/", res_e2b, "_Z"))
+heatmap_MB(expdat = expdat.z, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "Zscore", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_2b/", res_e2b, "_Z"))
+
+#Heatmap of CPM
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = F, ret = T, 
+           filenm = paste0("../data/processed/Expt_2b/", res_e2b, "_CPM"))
+heatmap_MB(expdat = expdat.cpm, sym_col = 1, dat_col = 5:7, sort_col = 5:7, 
+           base = "CPM", cluster = "HC", symb = T, ret = F, 
+           filenm = paste0("../data/processed/Expt_2b/", res_e2b, "_CPM"))
+```
+
+
+#
+#### Perform functional gene enrichment using gProfiler
+```{r, echo=FALSE, results="asis"}
+library(gProfileR)
+library(org.Dr.eg.db)
+
+source("../src/tools/FuncGeneEnrich_v0.1.0.R")
+source("../src/tools/GO_leaf_v1.1.R")
+source("../src/visualization/Dotplot_GO_v1.0.R")
+source("../src/visualization/Barplot_GO_v1.0.R")
+source("../src/visualization/Heatmap_GO_v1.0.R")
+
+#Get up and down names
+dat <- et_results_Expt_2b$sig
+# cl.list <- list(Down = row.names(dat[dat$logFC < fc & dat$FDR < fdr,]),
+#                 Up = row.names(dat[dat$logFC > fc & dat$FDR < fdr,]))
+cl.list <- list(Down = (dat[dat$logFC < fc & dat$FDR < fdr,1]),
+                Up = (dat[dat$logFC > fc & dat$FDR < fdr,1]))
+
+#Perform gene enrichment analysis
+gpout.e2b <- gprofiler(query = cl.list , organism = "drerio", custom_bg = gene_dge_e2a$genes$SYMBOL)
+#
+#Save the results
+write.table(gpout.e2b, file = paste0("../data/processed/", res_e2b, "/gProfileR_ET.tsv"), 
+            quote=F, sep="\t", col.names = NA)
+
+fge(dat = expdat.cpm, gpout = gpout.e2b, catnm = 10, paths = c("rea", "keg", "BP"), 
+    dat_col = 5:7, sym_col = 1, samp_ord = 1:3, expt.nm = res_e2b, 
+    res.path = "../data/processed/Expt_2b/")
+
+
+print("Completed...")
+```
+
+# Euler/Venn Plot of DE results
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(eulerr)
+library(grid); library(gridExtra)
+de.expt2 <- unique(c(row.names(et_results_Expt_1$sig), row.names(et_results_Expt_2a$sig), row.names(et_results_Expt_2b$sig)))
+de.decides <- data.frame(Genes = de.expt2,
+                         DHF = ifelse(de.expt2 %in% row.names(et_results_Expt_1$sig), 1, 0),
+                         TubA = ifelse(de.expt2 %in% row.names(et_results_Expt_2a$sig), 1, 0),
+                         TubA_Ana = ifelse(de.expt2 %in% row.names(et_results_Expt_2b$sig), 1, 0)) 
+
+eul.mat <- venn(de.decides[2:4])
+p <- plot(eul.mat, quantities = T, labels = T,
+     fills = list(fill = c("seagreen3", "red", "steelblue4"), alpha = 0.4))
+
+pdf("../data/processed/VennEuler.pdf", width=7, height=7)
+print(p)
+dev.off()
+
+print(p)
+
+
+# Heatmap of overlap sections
+sections <- list(DT = de.decides %>% 
+                   filter(DHF == 1 & TubA == 1 & TubA_Ana == 0) %>% 
+                   select(Genes) %>% as.list(),
+                 DTA = de.decides %>% 
+                   filter(DHF == 1 & TubA == 0 & TubA_Ana == 1) %>% 
+                   select(Genes) %>% as.list(),
+                 TTA = de.decides %>% 
+                   filter(DHF == 0 & TubA == 1 & TubA_Ana == 1) %>% 
+                   select(Genes) %>% as.list(),
+                 All = de.decides %>% 
+                   filter(DHF == 1 & TubA == 1 & TubA_Ana == 1) %>% 
+                   select(Genes) %>% as.list())
+
+#Section colors
+colorSection <- c("burlywood2", "steelblue4", "red", "black")
+
+dat <- c()
+for (i in 1:length(sections)){
+  dat.tmp <- data.frame(gene.dge$lcpm[unlist(sections[i], use.names = F),])
+  dat.tmp$color <- colorSection[i]
+  dat <- rbind(dat,dat.tmp)
+}
+
+# Get the color information from each section
+dat.col <- dat[, ncol(dat)]
+
+# Take the average of lCPM
+dat <- MBave(dat[,1:length(grp)], grp = grp)
+# Get the Z-score
+dat.z <- data.frame(t(scale(t(dat), center = T, scale = T)))
+
+# Add the color info back to df
+dat$Color <- dat.col
+dat.z$Color <- dat.col
+# Add the annotation
+dat <- data.frame(merge(annot.gene, dat, by = 0), row.names = 1)
+dat.z <- data.frame(merge(annot.gene, dat.z, by = 0), row.names = 1)
+
+# Plot the heatmap CPM
+p <- heatmap_MB(expdat = dat, sym_col = 5, dat_col = 10:16, sort_col = 10:16, 
+           ret = T, base = "CPM", cluster = "HC", symb = T, 
+           filenm = "../data/processed/Sections_HM")
+# Color the y-axis text according to which section it came from
+col.sig <- dat.z$Color[match(levels(p$data$external_gene_name), dat.z$external_gene_name)]
+p <- p  +
+  labs(subtitle = "Venn Sections Genes (Z-score)",
+       caption = "GENE LABELS\nDHF-TubA: gold;  DHF-TubA_Ana: blue;  TubA-TubA_Ana: red;  All: black") +
+  theme(axis.text.y = element_text(colour = col.sig))
+
+print(p)
+
+# Plot the heatmap Z-score
+p <- heatmap_MB(expdat = dat.z, sym_col = 5, dat_col = 10:16, sort_col = 10:16, 
+           ret = T, base = "Zscore", cluster = "HC", symb = T, 
+           filenm = "../data/processed/Sections_HM_Z")
+# Color the y-axis text according to which section it came from
+col.sig <- dat.z$Color[match(levels(p$data$external_gene_name), dat.z$external_gene_name)]
+p <- p  +
+  labs(subtitle = "Venn Sections Genes (Z-score)",
+       caption = "GENE LABELS\nDHF-TubA: gold;  DHF-TubA_Ana: blue;  TubA-TubA_Ana: red;  All: black") +
+  theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+```
+
+#
+# Interogate specific pathways for Expt 2a
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(reactome.db)
+library(org.Dr.eg.db)
+#chrs <- c(1:25, "X", "Y")
+
+#Get pathways and IDs
+reactP2E <- as.list(reactomePATHID2EXTID)
+reactP2D <- as.list(reactomePATHID2NAME)
+#react.mm <- reactP2D[grep("-MMU-", names(reactP2D))]
+
+#Misc to look up pathway
+# pathway <- "HIF"
+# react.p <- names(reactP2D[grep(pathway, reactP2D)])
+# react.p <- react.p[grep("-DRE-", react.p)]
+# react.ez <- reactP2E[[react.p]]
+
+dat_col = 5:26
+sort_col = 5:26
+
+###############################################################################
+# Cellular Response to Hypoxia
+path_nm <- "Cellular Response to Hypoxia"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+react.ez <- reactP2E[["R-DRE-1234174"]]
+react.sym <- AnnotationDbi::select(org.Dr.eg.db, keys = react.ez, keytype = "ENTREZID", columns = "SYMBOL")[,2]
+react.sym <- react.sym[!duplicated(react.sym)]
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+#dat.mstr <- gene.dge.filt$lcpm %>% data.frame %>% rownames_to_column('external_gene_name')
+dat.mstr <- dat.mstr[dat.mstr$external_gene_name %in% unique(react.sym), ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+# Indi samples
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = sort_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+################################################################################
+# Oxygen-dependent proline hydroxylation of Hypoxia-inducible Factor Alpha
+path_nm <- "Oxygen-dependent proline hydroxylation of Hypoxia-inducible Factor Alpha"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+react.ez <- reactP2E[["R-DRE-1234176"]]
+react.sym <- AnnotationDbi::select(org.Dr.eg.db, keys = react.ez, keytype = "ENTREZID", columns = "SYMBOL")[,2]
+react.sym <- react.sym[!duplicated(react.sym)]
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+#dat.mstr <- gene.dge.filt$lcpm %>% data.frame %>% rownames_to_column('external_gene_name')
+dat.mstr <- dat.mstr[dat.mstr$external_gene_name %in% unique(react.sym), ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+# Indi samples
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = sort_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+
+###############################################################################
+# Regulation of gene expression by Hypoxia-inducible Factor
+path_nm <- "Regulation of gene expression by Hypoxia-inducible Factor"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+react.ez <- reactP2E[["R-DRE-1234158"]]
+react.sym <- AnnotationDbi::select(org.Dr.eg.db, keys = react.ez, keytype = "ENTREZID", columns = "SYMBOL")[,2]
+react.sym <- react.sym[!duplicated(react.sym)]
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+#dat.mstr <- gene.dge.filt$lcpm %>% data.frame %>% rownames_to_column('external_gene_name')
+dat.mstr <- dat.mstr[dat.mstr$external_gene_name %in% unique(react.sym), ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+# Indi samples
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = sort_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+
+###############################################################################
+# Iron uptake and transport
+path_nm <- "Iron uptake and transport"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+react.ez <- reactP2E[["R-DRE-917937"]]
+react.sym <- AnnotationDbi::select(org.Dr.eg.db, keys = react.ez, keytype = "ENTREZID", columns = "SYMBOL")[,2]
+react.sym <- react.sym[!duplicated(react.sym)]
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+#dat.mstr <- gene.dge.filt$lcpm %>% data.frame %>% rownames_to_column('external_gene_name')
+dat.mstr <- dat.mstr[dat.mstr$external_gene_name %in% unique(react.sym), ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+# Indi samples
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = sort_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+###############################################################################
+# Antigen processing: Ubiquitination & Proteasome degradation
+path_nm <- "Ubiquitination Proteasome degradation"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+react.ez <- reactP2E[["R-DRE-983168"]]
+react.sym <- AnnotationDbi::select(org.Dr.eg.db, keys = react.ez, keytype = "ENTREZID", columns = "SYMBOL")[,2]
+react.sym <- react.sym[!duplicated(react.sym)]
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+#dat.mstr <- gene.dge.filt$lcpm %>% data.frame %>% rownames_to_column('external_gene_name')
+dat.mstr <- dat.mstr[dat.mstr$external_gene_name %in% unique(react.sym), ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+# Indi samples
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = sort_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+```
+
+#
+# HDAC6 Interactors
+```{r, echo=FALSE, results='asis'}
+
+# Import BioGrid interaction data
+biogrd <- read.csv("../data/external/BIOGRID-GENE-115330-3.5.175.tab2.txt", sep = "\t")
+inter <- unique(unlist(as.list(biogrd[,8:9]), use.names = FALSE))
+
+# Import Hs2Dr homology from Ensembl v98
+ens <- read.csv("../data/external/ENS98_Hs2Dr.txt", sep = "\t")
+inter.ens <- ens[ens$Gene.name %in% inter & !is.na(ens$Zebrafish.orthology.confidence..0.low..1.high.),]
+
+#######################################
+# Heatmap of high confidence homologues
+path_nm <- "HDAC6 Interactors - High confidence homologues"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+int <- inter.ens[inter.ens$Zebrafish.orthology.confidence..0.low..1.high. == 1, 3]
+dat.mstr <- dat.mstr[int, ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = dat_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+
+#######################################
+# Heatmap of high confidence homologues
+path_nm <- "HDAC6 Interactors - Low confidence homologues"
+path_exp <- substr(gsub(" ", "_", path_nm),1,30)
+
+dat.mstr <- data.frame(merge(gene.dge.filt$genes, gene.dge.filt$lcpm, by = 0), row.names = 1)
+colnames(dat.mstr)[1] <- "external_gene_name"
+int <- inter.ens[inter.ens$Zebrafish.orthology.confidence..0.low..1.high. == 0, 3]
+dat.mstr <- dat.mstr[int, ]
+#dat.mstr <- dat.mstr[dat.mstr$chromosome_name %in% chrs, ]
+dat.mstr$sig <- ifelse(row.names(dat.mstr) %in% row.names(et_results_Expt_2a$sig), "red", "black")
+#dat.mstr <- cbind(dat.mstr[,1:9], MBave(dat.mstr[,10:31], grp = grp))
+
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = dat_col, sort_col = dat_col, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+# Averaged samples
+dat.mstr <- cbind(dat.mstr[1], MBave(dat.mstr[,dat_col], grp = grp), dat.mstr$sig)
+p <- heatmap_MB(expdat = dat.mstr, 
+           sym_col = 1, dat_col = 2:8, sort_col = 2:8, 
+           base = "CPM", cluster = "HC", symb = T,
+           filenm = paste("../data/processed/", path_exp, "_ave", sep = ""), ret = T)
+col.sig <- dat.mstr$sig[match(levels(p$data$external_gene_name), dat.mstr$external_gene_name)]
+p <- p + labs(subtitle=path_nm) +
+      theme(axis.text.y = element_text(colour = col.sig))
+print(p)
+
+
+```
+
+
+#
+# Individual Gene Expression Plots
+```{r, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+
+library(tidyr)
+library(tibble)
+
+# List of GOIs
+goi.indi <- c("hif1aa", "vhl", "ca9", "slc2a1a", "vegfbb", "nup93", "atp6v0e1", "rpl26")
+
+#Prep the data
+# dat_tmp <- data.frame(gene.dge$cpm) %>% 
+#   rownames_to_column()
+
+dat_tmp <- data.frame(merge(gene.dge$genes[1], gene.dge$cpm, by = 0), row.names = 1)
+colnames(dat_tmp)[1] <- "external_gene_name"
+# dat_tmp <- dat_tmp %>% 
+#   dplyr::filter(chromosome_name %in% chrs)
+# dat_tmp <- dat_tmp[,c(5,10:31)]
+
+# Loop for each gene
+for (i in goi.indi){
+  
+  # Subset the data
+  dat_goi <- dat_tmp %>% 
+  dplyr::filter(external_gene_name %in% i) %>%
+  gather(Sample, CPM, -external_gene_name)
+  
+  # Check if data exists
+  if (dim(dat_goi)[1 > 0]){
+    
+    #Add grp info
+    dat_goi$Geno <- grp
+    
+    # Plot
+    p <-  ggplot(dat_goi, aes(Geno, CPM, color = Geno)) +
+      geom_point(size = 2) + 
+      scale_colour_manual(values = unique(colorsSamp)) +
+      labs(title = i, x=NULL, y="CPM") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+      #theme(legend.position = "top", legend.title = element_blank()) +
+      theme(legend.position = "none") +
+      theme(plot.title = element_text(hjust = 0, size = 24))
+
+  ggsave(p, filename = paste("../data/processed/IndiPlot_", i, ".pdf", sep = ""),
+         device = "pdf",height = 4, width = 6)
+  print(p)
+  }
+  
+}
+
+```
+
+
+
+### Investigate Alignment Issues
+```{r}
+
+trans_counts.mstr <- data.frame(merge(annot.trans, trans.dge$counts, by = 0), row.names = 1)
+
+pseudo.trans <- trans_counts.mstr[row.names(annot.trans[grep('pseudogene', annot.trans$transcript_biotype), ]), ] 
+pc.trans <- trans_counts.mstr[row.names(annot.trans[grep('protein_coding', annot.trans$transcript_biotype), ]), ]
+
+colSums(pseudo.trans[,12:33]) / colSums(trans_counts.mstr[,12:33])
+colSums(pc.trans[,12:33]) / colSums(trans_counts.mstr[,12:33])
+```
+
+
+#
+## Session Information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+#
+## Explanation of Output Files
+
+#### File structure of the data
+
+* data
+    + external
+    + interim
+    + processed   
+    + raw
+        - kallisto
+        - star
+* notebooks
+
+#
+#### Output File Description
+
+Output files from analysis contain both tab-separated values table (.tsv), as well as, plots in pdf form. The tsv tables can be opened in Excel.
+
+#
+##### 'data/external'
+Not used in this analysis.
+
+#
+##### 'data/interim'
+Output from kallisto and tximport. This data is NOT normalized and shouldn't be used 'as is'.
+
+* Trans_Counts_raw.tsv
+    + Kallisto transcript-level counts
+* Trans_EffLength_raw.tsv
+    + Bias corrected effective transcript length
+* Trans_TPM_raw.tsv
+    + Transcript-level transcript-per-million (TPM) expression values
+* Gene_Counts_raw.tsv
+    + Tximport gene-level counts
+* Gene_EffLength_raw.tsv
+    + Bias corrected effective gene length
+* Gene_TPM_raw.tsv
+    + Gene-level transcript-per-million (TPM) expression values
+
+#
+##### 'data/processed'
+
+* Gene_CPM_MSTR.tsv
+    + Full TMM normalized gene-level results for all the genes in the annotation. Expression values are in counts-per-million (CPM). The Gene_log2CPM_MSTR.tsv file is the same except values are expressed as log2 with 1 offset.
+* Gene_filtCPM_MSTR_5CPM.tsv
+    + CPM filtered gene-level results of the full data table
+* Trans_RPKM_MSTR.tsv
+    + Full TMM normalized transcript-level results for all the transcripts in the annotation. Expression values are in reads-per-kilobase-per-million reads (RPKM). The Trans_log2RPKM_MSTR.tsv file is the same except values are expressed as log2 with 1 offset. 
+* DE.et.all.tsv
+    + The differential expression results output from edgeR. "All" is the full DE results, whereas the "sig" is only the significance filtered.
+* gProfileR_ET.tsv
+    + The full functional gene enrichment analysis output
+* gProf_Expt_*
+    + Directory containing the visualization results from the functional gene enrichment analysis
+        - Heatmaps : heatmaps of all the top enriched categories using log2 CPM values 
+
+#
+##### 'data/raw
+The raw kallisto data and star alignment summaries. If you need the actual BAM files from the star alignment the transfer can be arranged.
